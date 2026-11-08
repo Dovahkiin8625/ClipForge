@@ -1553,6 +1553,7 @@ namespace ClipForge
 
         public MainForm()
         {
+            try { this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
             fBase = new Font("Microsoft YaHei UI", 9F);
             fSmall = new Font("Microsoft YaHei UI", 8.25F);
             fBold = new Font("Microsoft YaHei UI", 9.5F, FontStyle.Bold);

@@ -19,9 +19,13 @@ $sources = @(
     (Join-Path $srcDir "src\Snapshot.cs")
 )
 
+$icon = Join-Path $srcDir "assets\icon_cropped.ico"
+$iconArg = @()
+if (Test-Path -LiteralPath $icon) { $iconArg = @("/win32icon:`"$icon`"") }
+
 & $csc /nologo /target:winexe /optimize+ /out:"$out" `
     /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.dll `
-    @sources
+    @iconArg @sources
 
 if ($LASTEXITCODE -ne 0) { Write-Host "Build failed, exit code $LASTEXITCODE"; exit $LASTEXITCODE }
 
