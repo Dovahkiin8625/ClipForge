@@ -1,6 +1,10 @@
 # ClipForge
 
+[中文说明](README.zh-CN.md)
+
 A WinForms + ffmpeg media toolbox for Windows.
+
+![ScreenShot_2026-11-08_233111_907](./docs/image.png)
 
 ## Features
 

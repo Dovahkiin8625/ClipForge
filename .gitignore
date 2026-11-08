@@ -4,6 +4,7 @@ dist/
 # Runtime / user data
 settings.ini
 download_history.txt
+download_history.json
 crash.log
 
 # OS / editor
