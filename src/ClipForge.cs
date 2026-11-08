@@ -3180,7 +3180,10 @@ namespace ClipForge
             gOpt.Controls.Add(MakeLabel("保存目录", 14, 62, 70, 24));
             txtDlDir = MakeBox(90, 60, 676, 27);
             txtDlDir.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            txtDlDir.Text = U.ExeDir();
+            string lastDlDir = Cfg.Get("dl_dir");
+            if (string.IsNullOrEmpty(lastDlDir) || !Directory.Exists(lastDlDir))
+                lastDlDir = U.ExeDir();
+            txtDlDir.Text = lastDlDir;
             gOpt.Controls.Add(txtDlDir);
 
             btnDlDir = MakeButton("浏览…", 774, 58, 128, 32, false);
@@ -3315,7 +3318,11 @@ namespace ClipForge
             d.Description = "选择下载保存目录";
             string cur = txtDlDir.Text.Trim();
             if (cur.Length > 0 && Directory.Exists(cur)) d.SelectedPath = cur;
-            if (d.ShowDialog(this) == DialogResult.OK) txtDlDir.Text = d.SelectedPath;
+            if (d.ShowDialog(this) == DialogResult.OK)
+            {
+                txtDlDir.Text = d.SelectedPath;
+                try { Cfg.Set("dl_dir", d.SelectedPath); } catch { }
+            }
         }
 
         private static bool IsM3u8Url(string url)
@@ -3564,6 +3571,7 @@ namespace ClipForge
                     return;
                 }
             }
+            try { Cfg.Set("dl_dir", dir); } catch { }
 
             string name = txtDlName.Text.Trim();
             if (name.Length == 0) name = "download";
