@@ -340,15 +340,176 @@ namespace ClipForge
 
     internal static class DownloadHistory
     {
-        private static string HistoryPath { get { return Path.Combine(U.ExeDir(), "download_history.txt"); } }
+        private static string HistoryPath { get { return Path.Combine(U.ExeDir(), "download_history.json"); } }
+        private static string OldHistoryPath { get { return Path.Combine(U.ExeDir(), "download_history.txt"); } }
 
-        private static string Esc(string s)
+        private static string JsonEsc(string s)
         {
             if (s == null) return "";
-            return s.Replace("\\", "\\\\").Replace("\t", "\\t").Replace("\r", "\\r").Replace("\n", "\\n");
+            StringBuilder sb = new StringBuilder(s.Length + 16);
+            foreach (char c in s)
+            {
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    case '\b': sb.Append("\\b"); break;
+                    case '\f': sb.Append("\\f"); break;
+                    default:
+                        if (c < 32) sb.Append("\\u").Append(((int)c).ToString("x4"));
+                        else sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
         }
 
-        private static string Unesc(string s)
+        private static string JsonUnesc(string s)
+        {
+            if (s == null || s.Length == 0) return "";
+            StringBuilder sb = new StringBuilder(s.Length);
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '\\' && i + 1 < s.Length)
+                {
+                    char n = s[i + 1];
+                    if (n == '\\') { sb.Append('\\'); i++; continue; }
+                    if (n == '"') { sb.Append('"'); i++; continue; }
+                    if (n == '/') { sb.Append('/'); i++; continue; }
+                    if (n == 'n') { sb.Append('\n'); i++; continue; }
+                    if (n == 'r') { sb.Append('\r'); i++; continue; }
+                    if (n == 't') { sb.Append('\t'); i++; continue; }
+                    if (n == 'b') { sb.Append('\b'); i++; continue; }
+                    if (n == 'f') { sb.Append('\f'); i++; continue; }
+                    if (n == 'u' && i + 5 < s.Length)
+                    {
+                        string hex = s.Substring(i + 2, 4);
+                        int val;
+                        if (int.TryParse(hex, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out val))
+                        {
+                            sb.Append((char)val);
+                            i += 5;
+                            continue;
+                        }
+                    }
+                    i++;
+                    continue;
+                }
+                sb.Append(c);
+            }
+            return sb.ToString();
+        }
+
+        private static string GetJsonString(string json, string key)
+        {
+            string pattern = "\"" + key + "\"";
+            int idx = json.IndexOf(pattern);
+            if (idx < 0) return "";
+            int colon = json.IndexOf(':', idx);
+            if (colon < 0) return "";
+            int q1 = json.IndexOf('"', colon);
+            if (q1 < 0) return "";
+            int i = q1 + 1;
+            StringBuilder sb = new StringBuilder();
+            while (i < json.Length)
+            {
+                char c = json[i];
+                if (c == '\\' && i + 1 < json.Length)
+                {
+                    sb.Append(c).Append(json[i + 1]);
+                    i += 2;
+                    continue;
+                }
+                if (c == '"') break;
+                sb.Append(c);
+                i++;
+            }
+            return JsonUnesc(sb.ToString());
+        }
+
+        private static long GetJsonLong(string json, string key)
+        {
+            string pattern = "\"" + key + "\"";
+            int idx = json.IndexOf(pattern);
+            if (idx < 0) return 0;
+            int colon = json.IndexOf(':', idx);
+            if (colon < 0) return 0;
+            int i = colon + 1;
+            while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
+            if (i < json.Length && json[i] == '"') return 0;
+            int start = i;
+            if (i < json.Length && (json[i] == '-' || char.IsDigit(json[i]))) i++;
+            while (i < json.Length && char.IsDigit(json[i])) i++;
+            if (i > start)
+            {
+                long v;
+                long.TryParse(json.Substring(start, i - start), out v);
+                return v;
+            }
+            return 0;
+        }
+
+        private static double GetJsonDouble(string json, string key)
+        {
+            string pattern = "\"" + key + "\"";
+            int idx = json.IndexOf(pattern);
+            if (idx < 0) return 0;
+            int colon = json.IndexOf(':', idx);
+            if (colon < 0) return 0;
+            int i = colon + 1;
+            while (i < json.Length && char.IsWhiteSpace(json[i])) i++;
+            if (i < json.Length && json[i] == '"') return 0;
+            int start = i;
+            if (i < json.Length && (json[i] == '-' || char.IsDigit(json[i]) || json[i] == '.')) i++;
+            while (i < json.Length && (char.IsDigit(json[i]) || json[i] == '.' || json[i] == 'e' || json[i] == 'E' || json[i] == '+' || json[i] == '-')) i++;
+            if (i > start)
+            {
+                double v;
+                double.TryParse(json.Substring(start, i - start), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out v);
+                return v;
+            }
+            return 0;
+        }
+
+        private static void MigrateFromTxt()
+        {
+            try
+            {
+                if (File.Exists(HistoryPath) || !File.Exists(OldHistoryPath)) return;
+                string[] lines = File.ReadAllLines(OldHistoryPath, Encoding.UTF8);
+                List<DownloadRecord> list = new List<DownloadRecord>();
+                foreach (string line in lines)
+                {
+                    if (string.IsNullOrEmpty(line) || line.StartsWith("#")) continue;
+                    string[] p = line.Split('\t');
+                    if (p.Length < 6) continue;
+                    DownloadRecord r = new DownloadRecord();
+                    r.Id = p.Length > 0 ? UnescTxt(p[0]) : "";
+                    r.Url = p.Length > 1 ? UnescTxt(p[1]) : "";
+                    r.FileName = p.Length > 2 ? UnescTxt(p[2]) : "";
+                    r.SaveDir = p.Length > 3 ? UnescTxt(p[3]) : "";
+                    r.OutputPath = p.Length > 4 ? UnescTxt(p[4]) : "";
+                    r.Mode = p.Length > 5 ? UnescTxt(p[5]) : "";
+                    r.Status = p.Length > 6 ? UnescTxt(p[6]) : "";
+                    if (p.Length > 7) long.TryParse(UnescTxt(p[7]), out r.Size);
+                    if (p.Length > 8) double.TryParse(UnescTxt(p[8]), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out r.Duration);
+                    r.Message = p.Length > 9 ? UnescTxt(p[9]) : "";
+                    r.CreatedAt = p.Length > 10 ? UnescTxt(p[10]) : "";
+                    r.FinishedAt = p.Length > 11 ? UnescTxt(p[11]) : "";
+                    if (r.Status == "下载中") r.Status = "已停止";
+                    list.Add(r);
+                }
+                Save(list);
+                try { File.Delete(OldHistoryPath); } catch { }
+            }
+            catch { }
+        }
+
+        private static string UnescTxt(string s)
         {
             if (s == null || s.Length == 0) return "";
             StringBuilder sb = new StringBuilder(s.Length);
@@ -373,28 +534,85 @@ namespace ClipForge
             List<DownloadRecord> list = new List<DownloadRecord>();
             try
             {
+                MigrateFromTxt();
                 if (!File.Exists(HistoryPath)) return list;
-                string[] lines = File.ReadAllLines(HistoryPath, Encoding.UTF8);
-                foreach (string line in lines)
+                string json = File.ReadAllText(HistoryPath, Encoding.UTF8);
+                if (string.IsNullOrEmpty(json)) return list;
+                json = json.Trim();
+                if (json.StartsWith("["))
                 {
-                    if (string.IsNullOrEmpty(line) || line.StartsWith("#")) continue;
-                    string[] p = line.Split('\t');
-                    if (p.Length < 6) continue;
-                    DownloadRecord r = new DownloadRecord();
-                    r.Id = p.Length > 0 ? Unesc(p[0]) : "";
-                    r.Url = p.Length > 1 ? Unesc(p[1]) : "";
-                    r.FileName = p.Length > 2 ? Unesc(p[2]) : "";
-                    r.SaveDir = p.Length > 3 ? Unesc(p[3]) : "";
-                    r.OutputPath = p.Length > 4 ? Unesc(p[4]) : "";
-                    r.Mode = p.Length > 5 ? Unesc(p[5]) : "";
-                    r.Status = p.Length > 6 ? Unesc(p[6]) : "";
-                    if (p.Length > 7) long.TryParse(Unesc(p[7]), out r.Size);
-                    if (p.Length > 8) double.TryParse(Unesc(p[8]), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out r.Duration);
-                    r.Message = p.Length > 9 ? Unesc(p[9]) : "";
-                    r.CreatedAt = p.Length > 10 ? Unesc(p[10]) : "";
-                    r.FinishedAt = p.Length > 11 ? Unesc(p[11]) : "";
-                    if (r.Status == "下载中") r.Status = "已停止"; // 上次异常退出
-                    list.Add(r);
+                    int depth = 0;
+                    int start = -1;
+                    for (int i = 0; i < json.Length; i++)
+                    {
+                        char c = json[i];
+                        if (c == '"')
+                        {
+                            i++;
+                            while (i < json.Length)
+                            {
+                                if (json[i] == '\\') { i += 2; continue; }
+                                if (json[i] == '"') break;
+                                i++;
+                            }
+                            continue;
+                        }
+                        if (c == '{')
+                        {
+                            if (depth == 0) start = i;
+                            depth++;
+                        }
+                        else if (c == '}')
+                        {
+                            depth--;
+                            if (depth == 0 && start >= 0)
+                            {
+                                string obj = json.Substring(start, i - start + 1);
+                                DownloadRecord r = new DownloadRecord();
+                                r.Id = GetJsonString(obj, "Id");
+                                r.Url = GetJsonString(obj, "Url");
+                                r.FileName = GetJsonString(obj, "FileName");
+                                r.SaveDir = GetJsonString(obj, "SaveDir");
+                                r.OutputPath = GetJsonString(obj, "OutputPath");
+                                r.Mode = GetJsonString(obj, "Mode");
+                                r.Status = GetJsonString(obj, "Status");
+                                r.Size = GetJsonLong(obj, "Size");
+                                r.Duration = GetJsonDouble(obj, "Duration");
+                                r.Message = GetJsonString(obj, "Message");
+                                r.CreatedAt = GetJsonString(obj, "CreatedAt");
+                                r.FinishedAt = GetJsonString(obj, "FinishedAt");
+                                if (r.Status == "下载中") r.Status = "已停止";
+                                list.Add(r);
+                                start = -1;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    // try old format if still present
+                    string[] lines = json.Replace("\r\n", "\n").Split('\n');
+                    foreach (string line in lines)
+                    {
+                        if (string.IsNullOrEmpty(line) || line.Trim().StartsWith("#")) continue;
+                        string[] p = line.Split('\t');
+                        if (p.Length < 6) continue;
+                        DownloadRecord r = new DownloadRecord();
+                        r.Id = p.Length > 0 ? UnescTxt(p[0]) : "";
+                        r.Url = p.Length > 1 ? UnescTxt(p[1]) : "";
+                        r.FileName = p.Length > 2 ? UnescTxt(p[2]) : "";
+                        r.SaveDir = p.Length > 3 ? UnescTxt(p[3]) : "";
+                        r.OutputPath = p.Length > 4 ? UnescTxt(p[4]) : "";
+                        r.Mode = p.Length > 5 ? UnescTxt(p[5]) : "";
+                        r.Status = p.Length > 6 ? UnescTxt(p[6]) : "";
+                        if (p.Length > 7) long.TryParse(UnescTxt(p[7]), out r.Size);
+                        if (p.Length > 8) double.TryParse(UnescTxt(p[8]), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out r.Duration);
+                        r.Message = p.Length > 9 ? UnescTxt(p[9]) : "";
+                        r.CreatedAt = p.Length > 10 ? UnescTxt(p[10]) : "";
+                        r.FinishedAt = p.Length > 11 ? UnescTxt(p[11]) : "";
+                        if (r.Status == "下载中") r.Status = "已停止";
+                        list.Add(r);
+                    }
                 }
             }
             catch { }
@@ -405,20 +623,33 @@ namespace ClipForge
         {
             try
             {
-                List<string> lines = new List<string>();
-                lines.Add("# DownloadHistory v1");
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                sb.Append("[\n");
                 if (list != null)
                 {
-                    foreach (DownloadRecord r in list)
+                    for (int i = 0; i < list.Count; i++)
                     {
-                        lines.Add(string.Join("\t", new string[] {
-                            Esc(r.Id), Esc(r.Url), Esc(r.FileName), Esc(r.SaveDir), Esc(r.OutputPath),
-                            Esc(r.Mode), Esc(r.Status), r.Size.ToString(), r.Duration.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                            Esc(r.Message), Esc(r.CreatedAt), Esc(r.FinishedAt)
-                        }));
+                        DownloadRecord r = list[i];
+                        sb.Append("  {\n");
+                        sb.Append("    \"Id\": \"").Append(JsonEsc(r.Id)).Append("\",\n");
+                        sb.Append("    \"Url\": \"").Append(JsonEsc(r.Url)).Append("\",\n");
+                        sb.Append("    \"FileName\": \"").Append(JsonEsc(r.FileName)).Append("\",\n");
+                        sb.Append("    \"SaveDir\": \"").Append(JsonEsc(r.SaveDir)).Append("\",\n");
+                        sb.Append("    \"OutputPath\": \"").Append(JsonEsc(r.OutputPath)).Append("\",\n");
+                        sb.Append("    \"Mode\": \"").Append(JsonEsc(r.Mode)).Append("\",\n");
+                        sb.Append("    \"Status\": \"").Append(JsonEsc(r.Status)).Append("\",\n");
+                        sb.Append("    \"Size\": ").Append(r.Size.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(",\n");
+                        sb.Append("    \"Duration\": ").Append(r.Duration.ToString("0.0##########", System.Globalization.CultureInfo.InvariantCulture)).Append(",\n");
+                        sb.Append("    \"Message\": \"").Append(JsonEsc(r.Message)).Append("\",\n");
+                        sb.Append("    \"CreatedAt\": \"").Append(JsonEsc(r.CreatedAt)).Append("\",\n");
+                        sb.Append("    \"FinishedAt\": \"").Append(JsonEsc(r.FinishedAt)).Append("\"\n");
+                        sb.Append("  }");
+                        if (i < list.Count - 1) sb.Append(",");
+                        sb.Append("\n");
                     }
                 }
-                File.WriteAllLines(HistoryPath, lines.ToArray(), new UTF8Encoding(false));
+                sb.Append("]\n");
+                File.WriteAllText(HistoryPath, sb.ToString(), new UTF8Encoding(false));
             }
             catch { }
         }
@@ -1422,13 +1653,13 @@ namespace ClipForge
             tabs.Font = fBase;
             Controls.Add(tabs);
 
+            BuildDownloadPage();
             BuildMergePage();
             BuildExtractPage();
             BuildCutPage();
             BuildJoinPage();
             BuildPicturePage();
             BuildConvertPage();
-            BuildDownloadPage();
 
             ticker = new System.Windows.Forms.Timer();
             ticker.Interval = 250;
