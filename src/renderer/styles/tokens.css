@@ -1,0 +1,90 @@
+/* ==========================================================================
+   ClipForge design tokens
+
+   The product is an instrument, not a website: it is used in long sessions,
+   in a dim room, by people who think in frames and timecode. So the palette
+   is a cool near-black room lit by two signals:
+
+     amber  — the grease-pencil mark. Time, the playhead, the live signal.
+     teal   — the active edit. Selection, focus, the thing you are touching.
+     violet — sound. Used only for audio waveforms and audio track labels.
+
+   Everything else is structure: flat surfaces, hairline rules, no gradients.
+   ========================================================================== */
+
+:root {
+  /* --- surfaces ---------------------------------------------------------- */
+  --void: #0b0e13;
+  --deck: #12161d;
+  --deck-2: #171d26;
+  --deck-3: #1e2531;
+  --deck-4: #262e3b;
+
+  /* --- lines ------------------------------------------------------------- */
+  --line: #212936;
+  --line-2: #2d3745;
+  --line-3: #3a4655;
+
+  /* --- ink --------------------------------------------------------------- */
+  --ink: #e7ebf1;
+  --ink-2: #7a8499;
+  --ink-3: #525c6e;
+  --ink-4: #3c4553;
+
+  /* --- signals ----------------------------------------------------------- */
+  --splice: #f2a03d;
+  --splice-hi: #ffbe68;
+  --splice-lo: #a86a24;
+  --splice-wash: rgba(242, 160, 61, 0.13);
+  --splice-edge: rgba(242, 160, 61, 0.34);
+
+  --signal: #3fd9c0;
+  --signal-hi: #6ee7d3;
+  --signal-wash: rgba(63, 217, 192, 0.11);
+  --signal-edge: rgba(63, 217, 192, 0.45);
+
+  --audio: #9b87f5;
+  --audio-wash: rgba(155, 135, 245, 0.13);
+  --audio-edge: rgba(155, 135, 245, 0.34);
+
+  --danger: #ef5f6b;
+  --danger-wash: rgba(239, 95, 107, 0.12);
+
+  /* --- type -------------------------------------------------------------- */
+  --font-ui: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC',
+    sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', 'Cascadia Mono',
+    'Consolas', monospace;
+
+  --fs-micro: 10.5px;
+  --fs-sm: 11.5px;
+  --fs-base: 12.5px;
+  --fs-md: 13.5px;
+  --fs-lg: 15px;
+  --fs-display: 19px;
+
+  /* --- geometry ---------------------------------------------------------- */
+  --r-clip: 2px;
+  --r-control: 4px;
+  --r-panel: 6px;
+  --r-dialog: 10px;
+
+  --track-h: 62px;
+  --ruler-h: 26px;
+  --head-w: 138px;
+  --titlebar-h: 44px;
+
+  /* --- motion ------------------------------------------------------------ */
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --fast: 110ms;
+  --mid: 180ms;
+}
+
+/* Honour the OS "reduce motion" setting throughout. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --fast: 0ms;
+    --mid: 0ms;
+  }
+}

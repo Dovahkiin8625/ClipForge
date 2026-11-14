@@ -1,16 +1,9 @@
-# Build output
-dist/
-
-# Runtime / user data
-settings.ini
-download_history.txt
-download_history.json
-crash.log
-
-# OS / editor
+node_modules/
+out/
+release/
+shots/
+testmedia/
+build/bin/
+*.log
+.DS_Store
 Thumbs.db
-Desktop.ini
-*.swp
-*.tmp
-.vs/
-.idea/

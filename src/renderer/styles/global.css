@@ -1,0 +1,379 @@
+@import './tokens.css';
+@import '../assets/fonts/fonts.css';
+@import './components.css';
+
+/* ==========================================================================
+   Reset — kept at zero specificity via :where() so component classes always
+   win without needing !important anywhere.
+   ========================================================================== */
+
+:where(*, *::before, *::after) {
+  box-sizing: border-box;
+}
+
+:where(html, body, #root) {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+:where(body) {
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--void);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
+}
+
+:where(button, input, select, textarea) {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+:where(button) {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+:where(input, textarea) {
+  background: none;
+  border: none;
+  outline: none;
+}
+
+:where(h1, h2, h3, h4, p, figure) {
+  margin: 0;
+  font-weight: inherit;
+}
+
+:where(ul, ol) {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+:where(canvas) {
+  display: block;
+}
+
+/* Visible keyboard focus everywhere — this app is driven by keyboard. */
+:focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 1px;
+  border-radius: var(--r-control);
+}
+
+::selection {
+  background: var(--splice-wash);
+  color: var(--ink);
+}
+
+/* --- scrollbars ---------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--deck-4) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--deck-4);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--line-3);
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ==========================================================================
+   Shared primitives
+   ========================================================================== */
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.label {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+}
+
+.panel-title {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  text-transform: none;
+  user-select: none;
+}
+
+/* --- buttons ------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--r-control);
+  border: 1px solid var(--line);
+  background: var(--deck-2);
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--deck-3);
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--deck-4);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--deck-3);
+  border-color: transparent;
+}
+
+.btn--primary {
+  background: var(--splice);
+  border-color: var(--splice);
+  color: #1a1206;
+  font-weight: 600;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--splice-hi);
+  border-color: var(--splice-hi);
+  color: #1a1206;
+}
+
+.btn--icon {
+  width: 26px;
+  padding: 0;
+}
+
+.btn--sm {
+  height: 22px;
+  padding: 0 7px;
+  font-size: var(--fs-micro);
+}
+
+/* --- form controls ------------------------------------------------------- */
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  transition: border-color var(--fast) var(--ease);
+}
+
+.field:hover {
+  border-color: var(--line-2);
+}
+
+.field:focus-within {
+  border-color: var(--signal-edge);
+}
+
+.field input {
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.field input::placeholder {
+  color: var(--ink-4);
+}
+
+/* --- range slider -------------------------------------------------------- */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--deck-4);
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--ink);
+  border: none;
+  transition: background var(--fast) var(--ease);
+}
+
+.slider:hover::-webkit-slider-thumb {
+  background: var(--splice-hi);
+}
+
+.slider:active::-webkit-slider-thumb {
+  background: var(--splice);
+}
+
+/* --- app shell ----------------------------------------------------------- */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--void);
+}
+
+.app__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app__upper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+
+.app__lower {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--deck);
+  border-top: 1px solid var(--line);
+}
+
+/* Resize handle between the preview and the timeline. */
+.resizer {
+  height: 5px;
+  cursor: ns-resize;
+  background: transparent;
+  position: relative;
+  flex: none;
+  margin-top: -1px;
+  z-index: 5;
+}
+
+.resizer::after {
+  content: '';
+  position: absolute;
+  inset: 2px 0 2px 0;
+  background: transparent;
+  transition: background var(--fast) var(--ease);
+}
+
+.resizer:hover::after {
+  background: var(--splice-edge);
+}
+
+/* --- toast --------------------------------------------------------------- */
+.toast-layer {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--deck-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-panel);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  animation: toast-in var(--mid) var(--ease);
+}
+
+.toast--error {
+  border-color: rgba(239, 95, 107, 0.5);
+}
+
+.toast--error .toast__dot {
+  background: var(--danger);
+}
+
+.toast__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--signal);
+  flex: none;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

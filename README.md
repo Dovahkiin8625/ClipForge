@@ -1,51 +1,187 @@
 # ClipForge
 
-[中文说明](README.zh-CN.md)
+一款基于 Node.js + Electron 的桌面视频剪辑工具。界面参考剪映的操作习惯，但代码完全自研，没有使用任何剪映相关的资源。
 
-A WinForms + ffmpeg media toolbox for Windows.
+![ClipForge](build/icon.png)
 
-![ScreenShot_2026-11-08_233111_907](./docs/image.png)
+---
 
-## Features
+## 特性
 
-- A/V merge (single / batch)
-- Audio extraction
-- Video cutting (visual range selection)
-- Video joining
-- Picture adjustments (rotate / crop / color)
-- Format conversion (including GIF export)
-- Video download (m3u8 / direct links)
+**剪辑**
+- 多轨道时间轴（视频轨 + 音频轨），片段可跨轨拖拽
+- 同一条轨道上片段不会重叠：放不下时会自动挪到最近的空位
+- 分割、裁剪、复制、删除、拖拽排序
+- 右键菜单：片段、轨道、时间轴空白处各有常用命令
+- 一键分离音频：把片段里的声音搬到音频轨道，画面留在原处
+- 轨道可重命名、隐藏、静音、锁定、上下移动
+- 吸附对齐（片段边缘、播放头、零点）
+- 无限撤销 / 重做
+- 框选、Shift 多选
 
-## Project Structure
+**变速**
+- 右上角「变速」标签页，常规变速与曲线变速两种方式
+- 常规变速：0.25× – 8×，滑块与数值框都能调，另有常用倍率快捷键
+- 曲线变速：可拖动的速度曲线，渐快、渐慢、慢动作、蒙太奇等预设
+- 曲线锚定在素材本身，裁剪片段时曲线跟着裁，而不是被拉伸
+- 预览与导出使用同一套时间映射，变速后的画面与声音始终对齐
 
-```text
-.
-├─ src/                  # C# source
-│  ├─ ClipForge.cs
-│  └─ Snapshot.cs
-├─ lib/                  # Third-party tools (e.g. N_m3u8DL-CLI)
-├─ docs/
-│  └─ 使用说明.txt
-├─ dist/                 # Build output (gitignored)
-├─ build.ps1             # Build script
-└─ README.md
+**预览**
+- 实时合成预览，逐帧精确，音画同步
+- 播放 / 暂停、逐帧步进、跳转
+- 音量、透明度、缩放、位置的关键帧动画
+- 变换参数既可拖动滑块，也可直接输入数值，中间画面实时跟随
+- 右上角「音频」标签页调节音量，支持一键淡入淡出，并画出音量包络
+- 选中的片段在画面上带控制框：拖中间移动、拖角拉伸、拖上面的圆点旋转
+
+**画布**
+- 标题栏右上角显示画布尺寸，点开可以改宽、高、比例与帧率
+- 默认跟随导入的第一个素材：竖屏素材得到竖屏画布，横屏素材得到横屏画布
+- 手动改过之后就不再跟随，随时可以点「跟随素材」改回去
+
+**调整**
+- 右上角「调整」标签页，亮度、对比度、高光、阴影、饱和度、色温、锐化、模糊、颗粒九项
+- 预览用 GPU 着色器实时处理，拖动滑块画面立刻跟着变
+- 导出时写进同样的 FFmpeg 滤镜，导出的画面与预览一致
+- 还有黑白、暖调、冷调、胶片四个预设
+
+**音频**
+- 每个片段独立音量，可打关键帧
+- 淡入 / 淡出只需填时长，音量包络实时预览
+- 视频片段的声音可分离到音频轨道单独编辑
+
+**导出**
+- 基于 FFmpeg 的完整合成导出
+- 三种产物：视频（MP4）、音频（MP3 / M4A / WAV / FLAC）、GIF 动图
+- 多轨叠加、音频混音、淡入淡出、音量包络、位置动画
+- GIF 可选宽度、帧率、抖动方式与是否循环
+- 实时进度、速度、剩余时间预估
+
+**性能**
+- 时间轴使用双层 Canvas：静态层只在文档/缩放/滚动变化时重绘，动态层只画播放头与拖拽反馈，拖动片段时不会重新贴任何一张缩略图
+- 缩略图由 FFmpeg 预生成为雪碧图，一次解码、多次 blit
+- 音频波形以 PCM 流式降采样为峰值包络，不把整段音频读进内存
+- 时间轴缩放没有固定范围：从整条时间轴一眼看完，一直放大到单帧；上限跟着项目长度走，保证末尾仍然滚得到
+
+---
+
+## 环境要求
+
+| 依赖 | 说明 |
+| --- | --- |
+| Node.js | ≥ 20（开发使用 v24） |
+| FFmpeg | 必须包含 `ffmpeg` 与 `ffprobe`，需在系统 PATH 中 |
+
+查找顺序：`$CLIPFORGE_FFMPEG` 环境变量 → 安装目录内 `resources/bin` → 系统 PATH。
+
+如果找不到 FFmpeg，应用仍可编辑和预览，但无法生成缩略图、波形与导出文件，界面顶部会给出提示。
+
+---
+
+## 开发
+
+```bash
+npm install
+npm run dev
 ```
 
-## Build
+> Windows 上如果 Electron 的安装脚本被 npm 拦截，需要手动执行一次：
+> `node node_modules/electron/install.js`
 
-Requirements: Windows + .NET Framework 4.x (`csc.exe`).
+### 构建与打包
 
-```powershell
-./build.ps1
+```bash
+npm run build      # 产出 out/
+npm run dist       # 产出 release/ClipForge-<版本>-setup.exe
 ```
 
-Output: `dist/ClipForge.exe` (third-party tools from `lib/` are copied to `dist/lib/`).
+想要一个自带 FFmpeg 的独立安装包（体积会增加约 200 MB）：
 
-## Dependencies
+```bash
+node scripts/bundle-ffmpeg.cjs
+npm run dist
+```
 
-- [ffmpeg / ffprobe](https://ffmpeg.org/) - core processing (auto-detected at runtime, can be set manually)
-- [N_m3u8DL-CLI](https://github.com/nilaoda/N_m3u8DL-CLI) - optional, for m3u8 downloads
+---
 
-## Usage
+## 快捷键
 
-Run `dist/ClipForge.exe`. See [docs/使用说明.txt](docs/使用说明.txt) (Chinese).
+| 操作 | 快捷键 |
+| --- | --- |
+| 播放 / 暂停 | `Space` |
+| 在播放头分割 | `S` |
+| 删除选中片段 | `Delete` / `Backspace` |
+| 复制选中片段 | `Ctrl+D` |
+| 撤销 / 重做 | `Ctrl+Z` / `Ctrl+Shift+Z` |
+| 逐帧步进 | `←` / `→` |
+| 跳到开头 / 结尾 | `Home` / `End` |
+| 时间轴缩放 | `Ctrl+滚轮` 或 `+` / `-` |
+| 打开 / 保存 / 导出 | `Ctrl+O` / `Ctrl+S` / `Ctrl+E` |
+
+时间轴上：拖动片段移动，拖动片段边缘裁剪，拖到同类的另一条轨道可换轨，拖动标尺擦洗，中键拖动平移。右键片段、轨道或时间轴空白处可打开菜单。
+
+---
+
+## 架构
+
+```
+src/
+├── main/                    Electron 主进程
+│   ├── index.ts             窗口生命周期
+│   ├── ipc.ts               IPC 处理
+│   ├── protocol.ts          clipforge:// 协议（支持 Range 请求）
+│   ├── ffmpeg.ts            二进制查找
+│   ├── media/               探测、缩略图雪碧图、波形峰值
+│   └── export/              filter_complex 构建 + 导出执行
+├── preload/                 contextBridge 桥接
+├── renderer/                React 渲染层
+│   ├── engine/              时间轴模型、关键帧、预览引擎、视频池
+│   ├── state/               zustand store、撤销栈、媒体缓存
+│   └── components/          面板与时间轴
+└── shared/types.ts          主/预加载/渲染进程共用的类型
+```
+
+### 几个关键设计
+
+**媒体通过自定义协议读取。** 渲染进程用 `<video crossorigin="anonymous">` 加载 `clipforge://media/…`，主进程实现了 HTTP Range 支持，否则 Chromium 拒绝在视频上定位跳转。路径用 base64url 编码，避开 Windows 盘符与 URL 解析的冲突。
+
+**导出的图层顺序与预览一致。** 合成图是一个 `color` 背景源，每个片段先归一化到自己的局部时间轴（`setpts=PTS-STARTPTS`），在此之上跑完所有动画滤镜，最后一步才平移到它在时间轴上的位置。于是 `fade`、`geq`、`volume` 这些按时间求值的滤镜天然工作在片段局部时钟上。
+
+**调整在预览里由着色器完成，导出时交给 FFmpeg。** 预览的画布是 RGB，亮度、对比度、阴影、高光这类调整必须逐像素算，只有片元着色器做得动；导出走的却是 YUV 管线。两边要给出同一张画面，靠的是同一套数学：亮度、对比度与阴影高光都是逐通道的曲线，合成一条后交给 FFmpeg 的 `curves`；饱和度作用在色度上，用的是视频管线那套 BT.601 亮度系数；色温是通道增益，对应 `colorchannelmixer`；颗粒只动亮度且不带时间标记，因此不会逐帧跳动。`scripts/verify-adjust-parity.cjs` 会把两边的结果逐像素比一遍。
+
+**画面上的控制框就是变换的那几个数。** 预览把选中片段的边框和把手画在画面上：拖中间改位置，拖角改缩放，拖上面的圆点改旋转，动的还是 `transform` 里的那几个值，所以检查器里的数字会跟着一起变。按住 Shift 旋转会以 15° 为步进。片段带关键帧时，改的是播放头处的那一帧，而不是基础值——和检查器里的做法一样。
+
+**同一条轨道上不会有两个片段压在一起。** 片段想落在哪里由它自己说了算，但落点被占时它会退到最近的空位上去：先把轨道上已经占住的地方列出来，找出中间的空档，再挑离落点最近、并且放得下整个片段的那一个——平手时取靠后的那个，拖到右边的东西不会又跳回左边。拖动时预览画的就是它真正会落到的位置，所以看到的就是得到的。片段因为变速变长时，它后面的片段会被推着走，而不是被压住。
+
+**导出有三种产物，用的是同一张合成图。** 视频导出把合成图编码成 H.264；音频导出只走声音那几条链，把所有片段混成一条；GIF 导出拿合成图缩到指定宽度、降到指定帧率，再用 `palettegen` / `paletteuse` 给它配一份调色板。三条路都从同一份 filter_complex 出发，所以看到的画面和听到的声音始终一致。
+
+**画布跟着第一个素材走。** 导入第一批素材时，画布取第一个素材的分辨率（短边压到 1080，不放大）；用户手动改过尺寸之后就不再跟随，除非点「跟随素材」。
+
+**关键帧分级处理。** 常见的"淡入—保持—淡出"用廉价的 `fade` 滤镜；任意曲线才走 `geq`，并在界面上提示会变慢。
+
+**速度曲线锚定在素材上。** 变速曲线的关键帧记录的是素材里的位置（秒），不是时间轴上的位置。这样裁剪片段时曲线是被裁掉一段，而不是被压缩；代价是曲线片段要单独记住自己覆盖了多长的素材（`sourceDuration`）。曲线按若干段恒定速率播放，源时间与时间轴时间的换算因此是可逆的——预览、分割、导出共用 `src/shared/speed.ts` 里的同一套换算。
+
+---
+
+## 测试
+
+```bash
+node scripts/make-icon.cjs    # 生成应用图标
+node scripts/bundle-ffmpeg.cjs # 可选：打包 FFmpeg
+node scripts/verify-layout-rules.cjs # 轨道排布规则与缩放范围
+npx electron scripts/smoke.cjs # 端到端冒烟测试
+npx electron scripts/verify-features.cjs # 跨轨拖拽、变换输入、画面内拖拽、右键菜单
+npx electron scripts/verify-speed-audio.cjs # 变速曲线、音频分离、淡入淡出
+npx electron scripts/verify-adjustments.cjs # 调整面板、预览跟随、导出与存档
+npx electron scripts/verify-timeline-layout.cjs # 片段不重叠、拖拽落位、缩放范围
+npx electron scripts/verify-export-kinds.cjs # 视频 / 音频 / GIF 三种导出
+node scripts/verify-adjust-parity.cjs # 预览与导出的画面是否一致
+```
+
+冒烟测试会真实启动应用、导入素材、生成缩略图与波形、播放、拖动片段、撤销、导出，并用 FFmpeg 校验产物。
+
+---
+
+## 许可
+
+MIT

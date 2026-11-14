@@ -1,0 +1,50 @@
+appId: com.clipforge.desktop
+productName: ClipForge
+copyright: ClipForge
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+# FFmpeg is bundled here when `node scripts/bundle-ffmpeg.cjs` has been run.
+# Without it the app falls back to the FFmpeg found on the system PATH.
+extraResources:
+  - from: build/bin
+    to: bin
+    filter:
+      - '**/*'
+
+asar: true
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ClipForge-${version}-setup.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ClipForge
+  deleteAppDataOnUninstall: false
+
+mac:
+  icon: build/icon.png
+  category: public.app-category.video
+  target:
+    - dmg
+
+linux:
+  icon: build/icon.png
+  category: AudioVideo
+  target:
+    - AppImage
