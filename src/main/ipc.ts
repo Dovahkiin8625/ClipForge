@@ -13,6 +13,7 @@ import {
   ytdlpInfo
 } from './download'
 import { DownloadManager } from './downloads'
+import { VocalRunner } from './vocals/runner'
 import type {
   AppInfo,
   ConvertOptions,
@@ -31,10 +32,12 @@ import type {
   VideoInfo,
   YtdlpInfo
 } from '@shared/types'
+import type { VocalSeparateRequest, VocalState } from '@shared/vocals'
 
 const runner = new ExportRunner()
 const converter = new ConvertRunner()
 const downloader = new DownloadManager()
+const vocalist = new VocalRunner()
 
 const MEDIA_EXTENSIONS = [
   'mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'mpg', 'mpeg',
@@ -54,6 +57,7 @@ converter.on('progress', (p: ConvertProgress) => broadcast('convert:progress', p
 converter.on('state', (s: ConvertState) => broadcast('convert:state', s))
 downloader.on('state', (s: DownloadState) => broadcast('download:state', s))
 downloader.on('tasks', (t: DownloadTask[]) => broadcast('download:tasks', t))
+vocalist.on('state', (s: VocalState) => broadcast('vocal:state', s))
 
 async function importPaths(paths: string[]): Promise<ImportedAsset[]> {
   const assets: ImportedAsset[] = []
@@ -343,5 +347,28 @@ export function registerIpc(): void {
 
   ipcMain.handle('download:saveForm', async (_e, form: DownloadForm) => {
     downloader.saveForm(form)
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* Vocal separation                                                 */
+  /* ---------------------------------------------------------------- */
+
+  ipcMain.handle('vocal:providers', async () => {
+    return vocalist.providers()
+  })
+
+  ipcMain.handle('vocal:separate', async (_e, request: VocalSeparateRequest) => {
+    if (vocalist.busy) throw new Error('已有人声分离任务正在进行')
+    try {
+      return await vocalist.run(request)
+    } catch (err) {
+      // The state event already carries the user-facing message.
+      console.error('[clipforge] vocal separation failed:', err)
+      throw err
+    }
+  })
+
+  ipcMain.handle('vocal:cancel', async () => {
+    vocalist.cancel()
   })
 }

@@ -1,0 +1,11 @@
+Metadata-Version: 2.4
+Name: clipforge-vocal-separator
+Version: 1.0.0
+Summary: An optional service that separates voices out of recordings for ClipForge
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn>=0.27
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: pydantic>=2.6
+Provides-Extra: model
+Requires-Dist: demucs>=4.0; extra == "model"

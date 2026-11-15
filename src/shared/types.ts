@@ -3,8 +3,14 @@
  * Node or DOM specific imports — it is bundled into all three contexts.
  */
 
-export type ID = string
+import type {
+  VocalProviderInfo,
+  VocalSeparateRequest,
+  VocalSeparateResult,
+  VocalState
+} from './vocals'
 
+export type ID = string
 export type AssetKind = 'video' | 'audio' | 'image'
 
 export interface SpriteSheet {
@@ -567,6 +573,16 @@ export interface Api {
     onState(cb: (s: DownloadState) => void): () => void
     /** Fires whenever the download list changes. */
     onTasks(cb: (tasks: DownloadTask[]) => void): () => void
+  }
+  vocal: {
+    /** The separation methods that are available right now. */
+    providers(): Promise<VocalProviderInfo[]>
+    /** Separates the voice out of a clip's audio. */
+    separate(request: VocalSeparateRequest): Promise<VocalSeparateResult>
+    /** Stops a running separation. */
+    cancel(): Promise<void>
+    /** Fires while a separation runs. */
+    onState(cb: (s: VocalState) => void): () => void
   }
 }
 

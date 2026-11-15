@@ -1,0 +1,10 @@
+# The service itself needs very little.
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9
+pydantic>=2.6
+
+# The neural network is optional. Install it to get the Demucs provider:
+#   pip install demucs
+# Without it the service falls back to the middle-channel filter, which
+# needs only FFmpeg.

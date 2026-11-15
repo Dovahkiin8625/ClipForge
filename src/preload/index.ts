@@ -20,6 +20,12 @@ import type {
   VideoInfo,
   YtdlpInfo
 } from '@shared/types'
+import type {
+  VocalProviderInfo,
+  VocalSeparateRequest,
+  VocalSeparateResult,
+  VocalState
+} from '@shared/vocals'
 
 const api = {
   app: {
@@ -130,6 +136,19 @@ const api = {
         cb(payload)
       ipcRenderer.on('download:tasks', handler)
       return () => ipcRenderer.removeListener('download:tasks', handler)
+    }
+  },
+  vocal: {
+    /** The separation methods that are available right now. */
+    providers: (): Promise<VocalProviderInfo[]> => ipcRenderer.invoke('vocal:providers'),
+    /** Separates the voice out of a clip's audio. */
+    separate: (request: VocalSeparateRequest): Promise<VocalSeparateResult> =>
+      ipcRenderer.invoke('vocal:separate', request),
+    cancel: (): Promise<void> => ipcRenderer.invoke('vocal:cancel'),
+    onState: (cb: (s: VocalState) => void): Unsubscribe => {
+      const handler = (_e: Electron.IpcRendererEvent, payload: VocalState): void => cb(payload)
+      ipcRenderer.on('vocal:state', handler)
+      return () => ipcRenderer.removeListener('vocal:state', handler)
     }
   }
 }

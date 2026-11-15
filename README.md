@@ -49,6 +49,8 @@
 - 每个片段独立音量，可打关键帧
 - 淡入 / 淡出只需填时长，音量包络实时预览
 - 视频片段的声音可分离到音频轨道单独编辑
+- 片段右键菜单里还有「人声分离」：把人声提取成新的音频片段放到音频轨道，原片段静音
+- 分离可以交给可选的独立服务用神经网络模型（Demucs）来做，质量更好；没有服务时自动回退到 FFmpeg 中置声道提取
 
 **导出**
 - 基于 FFmpeg 的完整合成导出
@@ -97,6 +99,27 @@
 如果找不到 FFmpeg，应用仍可编辑和预览，但无法生成缩略图、波形与导出文件，界面顶部会给出提示。
 
 yt-dlp 的查找顺序：`$CLIPFORGE_YTDLP` 环境变量 → 在「下载」工作区手动指定的可执行文件 → 安装目录内 `resources/bin` → 系统 PATH。环境变量可以带参数，例如 `CLIPFORGE_YTDLP="python -m yt_dlp"`。没有它时只有下载工作区不可用，其余功能照常。
+
+### 人声分离服务（可选）
+
+「人声分离」本身不需要任何额外依赖：没有神经网络服务时，它用 FFmpeg 提取中置声道（人声通常在立体声中间），够用而且是瞬时的。
+
+想要更好的分离效果，可以跑一个独立的服务：
+
+```bash
+cd services/vocal-separator
+pip install -r requirements.txt
+pip install demucs            # 神经网络模型，可选
+python run.py --port 8777
+```
+
+然后告诉主程序去哪里找它（环境变量优先）：
+
+```bash
+CLIPFORGE_VOCAL_SERVICE=http://127.0.0.1:8777
+```
+
+这个服务是**独立于主程序**的：主程序只通过 HTTP 与它通信，不装 Python、不带模型也能正常编辑、预览与导出。服务里换模型、加模型（BS-RoFormer、Open-Unmix……）都不用动主程序的代码。详见 [`services/vocal-separator/README.md`](services/vocal-separator/README.md)。
 
 ---
 
@@ -164,7 +187,11 @@ src/
 │   ├── engine/              时间轴模型、关键帧、预览引擎、视频池
 │   ├── state/               zustand store、撤销栈、媒体缓存
 │   └── components/          面板与时间轴
-└── shared/types.ts          主/预加载/渲染进程共用的类型
+├── shared/types.ts          主/预加载/渲染进程共用的类型
+└── shared/vocals.ts         与分离服务之间的 HTTP 契约
+
+services/
+└── vocal-separator/         可选的人声分离服务（Python，独立进程，HTTP）
 ```
 
 ### 几个关键设计
@@ -185,6 +212,8 @@ src/
 
 **关键帧分级处理。** 常见的"淡入—保持—淡出"用廉价的 `fade` 滤镜；任意曲线才走 `geq`，并在界面上提示会变慢。
 
+**神经网络是可选的，不是必须的。** 人声分离的 provider 只有一个职责：把一个 WAV 变成另一个 WAV。主程序内建了 FFmpeg 中置声道提取作为兜底，而神经网络模型放在独立服务 `services/vocal-separator` 里，主程序只通过 HTTP 与它说话：服务不可用时功能照常（回退到中置声道），服务里换模型、加模型，主程序一行都不用改。契约写在 `src/shared/vocals.ts` 与 `vocal_separator/protocol.py` 两边，改动时同步。
+
 **速度曲线锚定在素材上。** 变速曲线的关键帧记录的是素材里的位置（秒），不是时间轴上的位置。这样裁剪片段时曲线是被裁掉一段，而不是被压缩；代价是曲线片段要单独记住自己覆盖了多长的素材（`sourceDuration`）。曲线按若干段恒定速率播放，源时间与时间轴时间的换算因此是可逆的——预览、分割、导出共用 `src/shared/speed.ts` 里的同一套换算。
 
 ---
@@ -203,6 +232,7 @@ npx electron scripts/verify-timeline-layout.cjs # 片段不重叠、拖拽落位
 npx electron scripts/verify-export-kinds.cjs # 视频 / 音频 / GIF 三种导出
 node scripts/verify-adjust-parity.cjs # 预览与导出的画面是否一致
 npx electron scripts/verify-tools.cjs # 转换工作区、下载工作区
+npx electron scripts/verify-vocals.cjs # 人声分离：菜单、分离结果与撤销
 ```
 
 `verify-tools.cjs` 会真实转码一个文件并校验产物；带 `CLIPFORGE_YTDLP` 运行时会连下载流程一起走完（`scripts/mock-ytdlp.cjs` 是一个不需要联网的替身）。

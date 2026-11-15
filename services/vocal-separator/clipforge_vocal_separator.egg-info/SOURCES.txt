@@ -1,0 +1,15 @@
+README.md
+pyproject.toml
+clipforge_vocal_separator.egg-info/PKG-INFO
+clipforge_vocal_separator.egg-info/SOURCES.txt
+clipforge_vocal_separator.egg-info/dependency_links.txt
+clipforge_vocal_separator.egg-info/requires.txt
+clipforge_vocal_separator.egg-info/top_level.txt
+vocal_separator/__init__.py
+vocal_separator/app.py
+vocal_separator/jobs.py
+vocal_separator/protocol.py
+vocal_separator/providers/__init__.py
+vocal_separator/providers/base.py
+vocal_separator/providers/center_channel.py
+vocal_separator/providers/demucs.py

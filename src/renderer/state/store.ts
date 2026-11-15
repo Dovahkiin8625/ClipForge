@@ -23,6 +23,8 @@ import {
   sourceAtOffset
 } from '@shared/speed'
 import { defaultAdjustments, normalizeAdjustments } from '@shared/adjustments'
+import type { VocalState } from '@shared/vocals'
+import { api } from '@/bridge'
 import {
   createProject,
   canvasSizeFor,
@@ -57,6 +59,8 @@ interface EditorState {
   dirty: boolean
   history: { past: Project[]; future: Project[] }
   exportState: ExportState
+  /** The progress of a running vocal separation. */
+  vocalState: VocalState
   toasts: Toast[]
   activeInspectorTab: 'transform' | 'composite' | 'adjust' | 'speed' | 'audio'
 
@@ -148,6 +152,13 @@ interface EditorState {
    * Moves the clip's audio onto an audio track and mutes the clip itself.
    */
   separateClipAudio(clipId: string): void
+  /**
+   * Lifts the voice out of a clip and puts it on an audio track.
+   *
+   * The heavy lifting happens in the main process; the result comes back as
+   * a new audio asset that is placed next to the picture.
+   */
+  separateClipVocals(clipId: string): Promise<void>
   /** Ramps the volume in or out at the clip's edges. */
   applyVolumeFade(
     clipId: string,
@@ -165,6 +176,8 @@ interface EditorState {
   setDirty(v: boolean): void
 
   setExportState(state: ExportState): void
+  /** Reports the progress of a vocal separation. */
+  setVocalState(state: VocalState): void
   toast(message: string, kind?: 'info' | 'error'): void
   dismissToast(id: number): void
 }
@@ -273,6 +286,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   dirty: false,
   history: { past: [], future: [] },
   exportState: emptyExportState(),
+  vocalState: { status: 'idle', progress: 0, message: '' },
   toasts: [],
   activeInspectorTab: 'transform',
 
@@ -926,6 +940,115 @@ export const useEditor = create<EditorState>((set, get) => ({
     )
   },
 
+  separateClipVocals: async (clipId) => {
+    const state = get()
+    const clip = state.project.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId)
+    if (!clip) return
+    const asset = state.project.assets[clip.assetId]
+    if (!asset || !asset.hasAudio) {
+      state.toast('该片段没有声音，无法分离人声', 'error')
+      return
+    }
+    const track = state.project.tracks.find((t) => t.clips.some((c) => c.id === clipId))
+    if (!track || track.kind !== 'video') {
+      state.toast('请在视频轨道的片段上使用人声分离', 'error')
+      return
+    }
+
+    // The separation runs on the clip's own range of the source, at the
+    // clip's own speed, so that the voice lines up with the picture.
+    const sourceSeconds = clip.sourceDuration ?? clip.duration * clip.speed
+
+    let result
+    try {
+      state.toast('正在分离人声…')
+      result = await api.vocal.separate({
+        sourcePath: asset.path,
+        start: clip.inPoint,
+        duration: sourceSeconds,
+        speed: clip.speed,
+        name: asset.name
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      get().toast(message || '人声分离失败', 'error')
+      return
+    }
+
+    const vocalAsset: ImportedAsset = {
+      id: `a_voc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      name: `${asset.name.replace(/\.[A-Za-z0-9]{1,5}$/, '')} 人声`,
+      path: result.path,
+      url: result.url,
+      kind: 'audio',
+      duration: result.duration || clip.duration,
+      width: 0,
+      height: 0,
+      fps: 0,
+      hasAudio: true,
+      codec: 'pcm_s16le',
+      sizeBytes: 0,
+      waveformBuckets: 0,
+      createdAt: Date.now()
+    }
+
+    // One undo step covers the new asset, the new clip and the muted clip.
+    get().pushHistory()
+    const audioTrackId = get().ensureTrack('audio')
+    let moved = false
+    get().mutate(
+      (draft) => {
+        const audioTrack = draft.tracks.find((t) => t.id === audioTrackId)
+        const source = draft.tracks.find((t) => t.clips.some((c) => c.id === clipId))
+        if (!audioTrack || !source) return
+        const original = source.clips.find((c) => c.id === clipId)
+        if (!original) return
+
+        draft.assets[vocalAsset.id] = { ...vocalAsset }
+
+        const vocals: Clip = {
+          ...original,
+          id: `c_voc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          assetId: vocalAsset.id,
+          trackId: audioTrackId,
+          // The separated audio already runs at the clip's speed, so it is
+          // played back straight.
+          inPoint: 0,
+          speed: 1,
+          speedKeyframes: undefined,
+          sourceDuration: undefined,
+          transform: { x: 0, y: 0, scale: 1, rotation: 0 },
+          keyframes: { ...emptyKeyframes(), volume: [...original.keyframes.volume] },
+          muted: false,
+          label: vocalAsset.name
+        }
+        original.muted = true
+
+        // The voice takes the room the picture had; the audio lane makes way.
+        const from = original.start
+        const to = from + original.duration
+        for (const other of audioTrack.clips) {
+          if (other.start >= to || other.start + other.duration <= from) continue
+          if (other.start >= from) continue
+          trimClipEnd(other, from - other.start)
+          moved = true
+        }
+        const others = audioTrack.clips.filter((c) => c.id !== original.id)
+        const before = others.map((c) => c.start)
+        audioTrack.clips.push(vocals)
+        pushClipsApart(audioTrack.clips, vocals.start)
+        audioTrack.clips.sort((a, b) => a.start - b.start)
+        if (others.some((c, i) => c.start !== before[i])) moved = true
+      },
+      { silent: true }
+    )
+    get().toast(
+      moved
+        ? `已分离人声到音频轨道（${result.label}），音频轨道上的其它片段已让位`
+        : `已分离人声到音频轨道（${result.label}）`
+    )
+  },
+
   applyVolumeFade: (clipId, kind, duration) =>
     get().mutate((draft) => {
       for (const track of draft.tracks) {
@@ -1002,6 +1125,7 @@ export const useEditor = create<EditorState>((set, get) => ({
   setDirty: (v) => set({ dirty: v }),
 
   setExportState: (state) => set({ exportState: state }),
+  setVocalState: (state) => set({ vocalState: state }),
 
   toast: (message, kind = 'info') => {
     const id = ++toastSeq
@@ -1035,3 +1159,10 @@ export function selectPrimaryClip(state: EditorState): Clip | null {
 }
 
 export { projectDuration }
+
+// The main process reports how far along a separation is; the store keeps
+// the last word of it so that the panels can show it.
+api.vocal.onState((state) => {
+  useEditor.getState().setVocalState(state)
+})
+

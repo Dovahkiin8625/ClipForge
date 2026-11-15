@@ -1,0 +1,23 @@
+[project]
+name = "clipforge-vocal-separator"
+version = "1.0.0"
+description = "An optional service that separates voices out of recordings for ClipForge"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "python-multipart>=0.0.9",
+  "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+# The neural network. Without it the service still runs, using the
+# middle-channel filter.
+model = ["demucs>=4.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["vocal_separator", "vocal_separator.providers"]

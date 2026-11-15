@@ -9,6 +9,7 @@ import {
 } from '@shared/speed'
 import { useEditor } from '@/state/store'
 import { mediaCache } from '@/state/mediaCache'
+import { api } from '@/bridge'
 import {
   clipEnd,
   findFreeSlot,
@@ -99,6 +100,28 @@ export function TimelinePanel(): React.JSX.Element {
   const snapEnabled = useEditor((s) => s.snapEnabled)
   const showWaveforms = useEditor((s) => s.showWaveforms)
   const playing = useEditor((s) => s.playing)
+  // While a separation is running the menu must not offer another one.
+  const vocalBusy = useEditor((s) => s.vocalState.status === 'running')
+
+  // Which engine will do the separation: a model from the separation
+  // service when there is one, the built-in filter otherwise.
+  const [vocalHint, setVocalHint] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    void api.vocal
+      .providers()
+      .then((list) => {
+        if (cancelled) return
+        const chosen =
+          list.find((p) => p.kind === 'model' && p.available) ??
+          list.find((p) => p.available)
+        if (chosen) setVocalHint(chosen.label.split(/[（\s]/)[0].trim())
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -858,6 +881,15 @@ export function TimelinePanel(): React.JSX.Element {
           disabled: locked || !canSeparateAudio,
           onSelect: () => store.separateClipAudio(clip.id)
         },
+        {
+          id: 'separate-vocals',
+          label: '人声分离',
+          hint: vocalHint || undefined,
+          disabled: locked || !canSeparateAudio || vocalBusy,
+          onSelect: () => {
+            void store.separateClipVocals(clip.id)
+          }
+        },
         { id: 'sep-2', separator: true },
         {
           id: 'speed-05',
@@ -988,7 +1020,7 @@ export function TimelinePanel(): React.JSX.Element {
         onSelect: () => store.clearSelection()
       }
     ]
-  }, [menu, project, playhead, snapEnabled, showWaveforms, selectedIds.length])
+  }, [menu, project, playhead, snapEnabled, showWaveforms, selectedIds.length, vocalBusy, vocalHint])
 
   /* ---------------------------------------------------------------- */
   /* Dropping media from the library                                   */
