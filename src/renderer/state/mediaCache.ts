@@ -52,7 +52,7 @@ export const mediaCache = {
       pending.add(asset.id)
       const columns = asset.duration > 0 ? 10 : 1
       void api.media
-        .sprite(asset.path, 0, Math.max(asset.duration, 0.2), columns, 160)
+        .sprite(asset.path, 0, Math.max(asset.duration, 0.2), columns, 160, asset.kind === 'image')
         .then((sheet) => {
           sprites.set(asset.id, sheet)
           const img = new Image()

@@ -72,11 +72,12 @@ export async function probeFile(path: string): Promise<ProbeResult> {
   let kind: AssetKind = 'video'
   if (!video && audio) kind = 'audio'
 
-  // An image has a single frame and no meaningful duration.
-  if (kind === 'video' && video && !audio && (duration === 0 || fps === 0)) {
-    const stillFormats = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'tiff']
-    const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
-    if (stillFormats.includes(ext)) kind = 'image'
+  // A still picture is recognised by its file extension, not by its
+  // duration: ffprobe reports a JPEG as a one-frame video of 0.04s at
+  // 25fps, so a duration test would call it a video. Only the extension
+  // tells a picture from a recording.
+  if (kind === 'video' && video && !audio && STILL_EXTENSIONS.has(extensionOf(path))) {
+    kind = 'image'
   }
 
   let sizeBytes = 0
@@ -90,7 +91,9 @@ export async function probeFile(path: string): Promise<ProbeResult> {
     path,
     name: basename(path),
     kind,
-    duration: Math.max(0, duration),
+    // A picture has no length of its own — it stays on the timeline for
+    // as long as the clip says.
+    duration: kind === 'image' ? 0 : Math.max(0, duration),
     width: video?.width ?? 0,
     height: video?.height ?? 0,
     fps,
@@ -98,6 +101,28 @@ export async function probeFile(path: string): Promise<ProbeResult> {
     codec: video?.codec_name ?? audio?.codec_name ?? 'unknown',
     sizeBytes
   }
+}
+
+/** The file extensions that hold a single still picture. */
+const STILL_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'jfif',
+  'webp',
+  'bmp',
+  'gif',
+  'tif',
+  'tiff',
+  'avif'
+])
+
+/** The lower-case extension of a path, without the dot. */
+function extensionOf(filePath: string): string {
+  const cut = Math.max(filePath.lastIndexOf('\\'), filePath.lastIndexOf('/'))
+  const name = filePath.slice(cut + 1)
+  const dot = name.lastIndexOf('.')
+  return dot <= 0 ? '' : name.slice(dot + 1).toLowerCase()
 }
 
 function pickDuration(...values: number[]): number {

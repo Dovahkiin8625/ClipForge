@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { Asset } from '@shared/types'
 import { useEditor } from '@/state/store'
 import { mediaCache } from '@/state/mediaCache'
 import { api } from '@/bridge'
 import { formatDuration } from '@/engine/timelineDraw'
+import { toUrl } from '@/engine/videoPool'
+import { AssetPreviewDialog } from './AssetPreviewDialog'
 
 export function MediaPanel(): React.JSX.Element {
   const project = useEditor((s) => s.project)
@@ -18,6 +20,10 @@ export function MediaPanel(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [project.assets, mediaVersion]
   )
+
+  // The asset whose preview window is open.
+  const [previewId, setPreviewId] = useState<string | null>(null)
+  const previewAsset = previewId ? project.assets[previewId] : undefined
 
   useEffect(() => {
     for (const asset of assets) mediaCache.ensure(asset)
@@ -34,21 +40,22 @@ export function MediaPanel(): React.JSX.Element {
 
   const insertAtPlayhead = useCallback((asset: Asset) => {
     const store = useEditor.getState()
-    const track =
-      store.project.tracks.find((t) => t.kind === 'video') ??
-      store.project.tracks[0]
+    // An audio file belongs on an audio track; a picture or a video on a
+    // video one. The track of the right kind is made when it is missing.
+    const kind = asset.kind === 'audio' ? 'audio' : 'video'
+    const track = store.project.tracks.find((t) => t.kind === kind)
     // History is recorded before anything changes, so a single undo takes the
     // whole insert — including a track created for it — back.
     store.pushHistory()
     if (!track) {
-      // No tracks at all — make one for the asset instead of ignoring it.
-      const kind = asset.kind === 'audio' ? 'audio' : 'video'
       const trackId = store.ensureTrack(kind)
       if (!trackId) return
       store.insertClip(asset.id, trackId, store.playhead)
+      store.toast(`已添加「${asset.name}」到${kind === 'audio' ? '音频' : '视频'}轨道`)
       return
     }
     store.insertClip(asset.id, track.id, store.playhead)
+    store.toast(`已添加「${asset.name}」到「${track.name}」`)
   }, [])
 
   const removeAsset = useCallback((assetId: string) => {
@@ -91,8 +98,8 @@ export function MediaPanel(): React.JSX.Element {
                   e.dataTransfer.setData('application/x-clipforge-asset', asset.id)
                   e.dataTransfer.effectAllowed = 'copy'
                 }}
-                onDoubleClick={() => insertAtPlayhead(asset)}
-                title={`${asset.name}\n双击添加到播放头位置`}
+                onDoubleClick={() => setPreviewId(asset.id)}
+                title={`${asset.name}\n双击预览`}
               >
                 <AssetThumb asset={asset} />
                 <div className="asset-card__meta">
@@ -111,6 +118,16 @@ export function MediaPanel(): React.JSX.Element {
                 >
                   <CloseIcon />
                 </button>
+                <button
+                  className="asset-card__add"
+                  title="添加到轨道"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    insertAtPlayhead(asset)
+                  }}
+                >
+                  <AddIcon />
+                </button>
               </div>
             ))}
           </div>
@@ -120,8 +137,12 @@ export function MediaPanel(): React.JSX.Element {
       {assets.length > 0 ? (
         <div className="media-panel__foot">
           <span className="label">{assets.length} 个素材</span>
-          <span className="label">双击添加到播放头</span>
+          <span className="label">双击预览 · + 添加到轨道</span>
         </div>
+      ) : null}
+
+      {previewAsset ? (
+        <AssetPreviewDialog asset={previewAsset} onClose={() => setPreviewId(null)} />
       ) : null}
     </aside>
   )
@@ -129,6 +150,24 @@ export function MediaPanel(): React.JSX.Element {
 
 function AssetThumb({ asset }: { asset: Asset }): React.JSX.Element {
   const sprite = mediaCache.sprite(asset.id)
+
+  // A picture is shown straight from its file — it needs no decoding into a
+  // sprite sheet, and this keeps the card sharp at any size.
+  if (asset.kind === 'image') {
+    const url = asset.url || (asset.path ? toUrl(asset.path) : '')
+    if (!url) {
+      return (
+        <div className="asset-card__thumb asset-card__thumb--empty">
+          <FilmGlyph />
+        </div>
+      )
+    }
+    return (
+      <div className="asset-card__thumb asset-card__thumb--image">
+        <img src={url} alt={asset.name} loading="lazy" draggable={false} />
+      </div>
+    )
+  }
 
   if (asset.kind === 'audio' || !sprite) {
     return (
@@ -193,6 +232,14 @@ function CloseIcon(): React.JSX.Element {
   return (
     <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
       <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function AddIcon(): React.JSX.Element {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+      <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
 }

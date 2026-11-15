@@ -297,6 +297,178 @@ export interface ExportState {
 }
 
 /* ------------------------------------------------------------------ */
+/* Format conversion                                                   */
+/* ------------------------------------------------------------------ */
+
+/** The containers a conversion can write. */
+export type ConvertFormat =
+  | 'mp4'
+  | 'mov'
+  | 'mkv'
+  | 'webm'
+  | 'avi'
+  | 'gif'
+  | 'mp3'
+  | 'wav'
+  | 'm4a'
+  | 'flac'
+
+/** The trade-off between file size and quality. */
+export type ConvertQuality = 'high' | 'medium' | 'low'
+
+export interface ConvertOptions {
+  /** Absolute path of the source file. */
+  input: string
+  /** Directory the converted file is written to. */
+  outputDir: string
+  /** File name without the extension. */
+  fileName: string
+  format: ConvertFormat
+  /** Video codec; ignored by the audio-only formats. */
+  videoCodec?: string
+  /** Audio codec; ignored by the video-only formats. */
+  audioCodec?: string
+  /** Target width in pixels; omitted keeps the source size. */
+  width?: number
+  /** Target height in pixels; omitted keeps the source size. */
+  height?: number
+  /** Target frame rate; omitted keeps the source rate. */
+  fps?: number
+  quality?: ConvertQuality
+  /** Audio bitrate in kbps for the lossy formats. */
+  audioBitrate?: number
+  /** Start time in seconds; omitted converts the whole file. */
+  start?: number
+  /** Length in seconds; omitted converts to the end. */
+  duration?: number
+}
+
+export interface ConvertProgress {
+  /** 0..1 */
+  progress: number
+  /** Seconds of output produced so far. */
+  outTime: number
+  /** Total seconds, when known. */
+  duration: number
+  /** ffmpeg speed multiplier, e.g. "12.5x". */
+  speed: string
+  eta: string
+}
+
+export type ConvertStatus = 'idle' | 'running' | 'done' | 'error' | 'cancelled'
+
+export interface ConvertState {
+  status: ConvertStatus
+  progress: ConvertProgress
+  message: string
+  log: string[]
+  outputPath?: string
+}
+
+/* ------------------------------------------------------------------ */
+/* Video download                                                      */
+/* ------------------------------------------------------------------ */
+
+/** One downloadable rendition of a video. */
+export interface VideoFormatOption {
+  /** The format id yt-dlp knows the rendition by. */
+  id: string
+  label: string
+  ext: string
+  width: number
+  height: number
+  fps: number
+  /** Estimated size in bytes, when the site reports one. */
+  sizeBytes?: number
+  /** Whether the rendition carries sound. */
+  hasAudio: boolean
+}
+
+export interface VideoInfo {
+  url: string
+  title: string
+  thumbnail?: string
+  duration: number
+  /** The site the video came from, e.g. "YouTube". */
+  extractor: string
+  formats: VideoFormatOption[]
+}
+
+export interface DownloadOptions {
+  url: string
+  /** The rendition to take; omitted picks the best available. */
+  formatId?: string
+  /** Directory the file is written to. */
+  outputDir: string
+  /** File name without extension; omitted lets the site decide. */
+  fileName?: string
+  /** The title of the video; only used to label the entry in the list. */
+  title?: string
+}
+
+export interface DownloadProgress {
+  /** 0..1 */
+  progress: number
+  speed: string
+  eta: string
+  totalSize: string
+  downloaded: string
+}
+
+export type DownloadStatus =
+  | 'idle'
+  | 'parsing'
+  | 'queued'
+  | 'running'
+  | 'done'
+  | 'error'
+  | 'cancelled'
+
+export interface DownloadState {
+  status: DownloadStatus
+  message: string
+  progress: DownloadProgress
+  /** Absolute path of the finished file. */
+  outputPath?: string
+}
+
+/** One entry of the download list. The list lives in the main process so it
+ *  survives switching workspaces and restarts of the app. */
+export interface DownloadTask {
+  id: string
+  url: string
+  title: string
+  /** The rendition that was picked, by yt-dlp's id. */
+  formatId: string
+  fileName: string
+  outputDir: string
+  status: DownloadStatus
+  message: string
+  progress: DownloadProgress
+  /** Absolute path of the finished file. */
+  outputPath?: string
+  createdAt: number
+}
+
+/** The state of the download form; it is kept so a link is never lost. */
+export interface DownloadForm {
+  url: string
+  formatId: string
+  fileName: string
+  outputDir: string
+  autoImport: boolean
+}
+
+/** Where the yt-dlp binary was found, if at all. */
+export interface YtdlpInfo {
+  available: boolean
+  path: string
+  version: string
+  /** Set when the binary has to be installed by the user. */
+  hint: string
+}
+
+/* ------------------------------------------------------------------ */
 /* IPC surface                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -310,10 +482,14 @@ export interface AppInfo {
 export interface Api {
   app: {
     info(): Promise<AppInfo>
+    /** The user's download folder, used as the default output directory. */
+    downloadsPath(): Promise<string>
   }
   media: {
     /** Opens the native file picker and imports the chosen files. */
     importFiles(): Promise<ImportedAsset[]>
+    /** Reads the metadata of a file without importing it. */
+    probe(path: string): Promise<ProbeResult>
     /** Imports specific absolute paths (used for drag & drop). */
     importPaths(paths: string[]): Promise<ImportedAsset[]>
     /** Generates (or returns cached) a thumbnail sprite for a time window. */
@@ -322,7 +498,9 @@ export interface Api {
       startTime: number,
       endTime: number,
       columns: number,
-      frameWidth?: number
+      frameWidth?: number,
+      /** The file is a single still picture, not a recording. */
+      still?: boolean
     ): Promise<SpriteSheet>
     /** Extracts audio peaks for an asset. */
     waveform(path: string, duration: number): Promise<{ peaks: number[]; buckets: number }>
@@ -349,6 +527,46 @@ export interface Api {
   }
   dialog: {
     message(options: { type?: 'info' | 'error' | 'warning'; title?: string; message: string }): Promise<void>
+  }
+  convert: {
+    /** Opens the native picker and returns the chosen source file. */
+    chooseInput(): Promise<string | null>
+    /** Opens the native picker and returns the chosen output directory. */
+    chooseOutputDir(): Promise<string | null>
+    /** Starts a conversion; progress arrives through the event callbacks. */
+    start(options: ConvertOptions): Promise<void>
+    cancel(): Promise<void>
+    onProgress(cb: (p: ConvertProgress) => void): () => void
+    onState(cb: (s: ConvertState) => void): () => void
+  }
+  download: {
+    /** Reports whether a yt-dlp binary is available. */
+    locate(): Promise<YtdlpInfo>
+    /** Lets the user point at a yt-dlp binary; the choice is remembered. */
+    chooseBinary(): Promise<YtdlpInfo>
+    /** Reads the metadata of a link without downloading it. */
+    parse(url: string): Promise<VideoInfo>
+    /** Starts a download; the list is updated through the event callback. */
+    start(options: DownloadOptions): Promise<DownloadTask>
+    /** The whole download list, newest first. */
+    tasks(): Promise<DownloadTask[]>
+    /** Cancels a task; a queued task is only dropped. */
+    cancel(id: string): Promise<void>
+    /** Removes a task from the list. */
+    remove(id: string): Promise<void>
+    /** Removes every finished task from the list. */
+    clearFinished(): Promise<void>
+    /** Opens the finished file with the system program. */
+    open(id: string): Promise<void>
+    /** Shows the finished file in the file manager. */
+    reveal(id: string): Promise<void>
+    /** The saved state of the download form. */
+    getForm(): Promise<DownloadForm>
+    /** Saves the state of the download form. */
+    saveForm(form: DownloadForm): Promise<void>
+    onState(cb: (s: DownloadState) => void): () => void
+    /** Fires whenever the download list changes. */
+    onTasks(cb: (tasks: DownloadTask[]) => void): () => void
   }
 }
 

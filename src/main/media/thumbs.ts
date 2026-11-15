@@ -37,15 +37,25 @@ export interface SpriteRequest {
   /** Source dimensions, used to work out the real frame height. */
   sourceWidth?: number
   sourceHeight?: number
+  /**
+   * The file is a single still picture rather than a recording.
+   *
+   * A still is not a video that happens to be short: the image demuxer gives
+   * it a duration of a fraction of a second, and FFmpeg's `fps` and `tile`
+   * filters then produce an *empty* sheet for it. A still is therefore
+   * scaled on its own, without seeking or filtering.
+   */
+  still?: boolean
 }
 
 export async function buildSprite(req: SpriteRequest): Promise<SpriteSheet> {
   const ffmpeg = ffmpegPath()
   if (!ffmpeg) throw new Error('ffmpeg not found — install FFmpeg or set CLIPFORGE_FFMPEG')
 
-  const columns = Math.max(1, Math.min(20, Math.round(req.columns)))
+  const still = req.still === true
+  const columns = still ? 1 : Math.max(1, Math.min(20, Math.round(req.columns)))
   const frameWidth = req.frameWidth ?? 160
-  const rows = req.rows ?? 6
+  const rows = still ? 1 : (req.rows ?? 6)
   const startTime = Math.max(0, req.startTime)
   const endTime = Math.max(startTime + 0.05, req.endTime)
   const span = endTime - startTime
@@ -54,25 +64,39 @@ export async function buildSprite(req: SpriteRequest): Promise<SpriteSheet> {
 
   const key = createHash('sha1')
     .update(
-      `${req.path}|${startTime.toFixed(3)}|${endTime.toFixed(3)}|${columns}|${rows}|${frameWidth}`
+      `${req.path}|${startTime.toFixed(3)}|${endTime.toFixed(3)}|${columns}|${rows}|${frameWidth}|${still ? 'still' : 'clip'}`
     )
     .digest('hex')
     .slice(0, 20)
   const outPath = join(cacheDir(), `${key}.jpg`)
 
   if (!existsSync(outPath)) {
-    await runFfmpeg(ffmpeg, [
-      '-hide_banner',
-      '-loglevel', 'error',
-      '-ss', startTime.toFixed(4),
-      '-t', span.toFixed(4),
-      '-i', req.path,
-      '-vf',
-      `fps=${interval > 0 ? (1 / interval).toFixed(6) : '1'},scale=${frameWidth}:-2:flags=bilinear,tile=${columns}x${rows}`,
-      '-frames:v', '1',
-      '-q:v', '4',
-      '-y', outPath
-    ])
+    const args = still
+      ? // A still is scaled on its own. Seeking into it or running it through
+        // the `fps` filter makes FFmpeg write an empty file, so neither is
+        // done here.
+        [
+          '-hide_banner',
+          '-loglevel', 'error',
+          '-i', req.path,
+          '-vf', `scale=${frameWidth}:-2:flags=bilinear`,
+          '-frames:v', '1',
+          '-q:v', '4',
+          '-y', outPath
+        ]
+      : [
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-ss', startTime.toFixed(4),
+        '-t', span.toFixed(4),
+        '-i', req.path,
+        '-vf',
+        `fps=${interval > 0 ? (1 / interval).toFixed(6) : '1'},scale=${frameWidth}:-2:flags=bilinear,tile=${columns}x${rows}`,
+        '-frames:v', '1',
+        '-q:v', '4',
+        '-y', outPath
+      ]
+    await runFfmpeg(ffmpeg, args)
   }
 
   // The tile filter emits only as many rows as the input actually filled, so
@@ -98,8 +122,10 @@ export async function buildSprite(req: SpriteRequest): Promise<SpriteSheet> {
     count: columns * actualRows,
     frameWidth: dims.width > 0 ? Math.round(dims.width / columns) : frameWidth,
     frameHeight,
-    startTime,
-    interval
+    startTime: still ? 0 : startTime,
+    // A still has no time axis; a non-zero interval keeps the maths in the
+    // timeline from dividing by zero.
+    interval: still ? 1 : interval
   }
 }
 

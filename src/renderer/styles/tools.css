@@ -1,0 +1,543 @@
+/* ==========================================================================
+   The tool workspaces — conversion and download.
+
+   They sit next to the editor, not inside it: same tokens, same surfaces,
+   but a different shape. The editor is a frame with a timeline under it;
+   a tool is a form on the left and a list of results on the right.
+   ========================================================================== */
+
+.app__tool {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* --- the shell of a tool ------------------------------------------------- */
+.tool {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.1fr) minmax(280px, 1.3fr);
+  background: var(--void);
+}
+
+.tool--download {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+}
+
+/* --- a workspace that is out of sight ------------------------------------ */
+/* The tool workspaces stay mounted while another one is open, so a running
+   download is never interrupted by a switch. */
+
+.tool-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: none;
+}
+
+.tool-pane.is-active {
+  display: flex;
+}
+
+/* --- the context menu of a task ------------------------------------------ */
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 172px;
+  padding: 4px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+
+.menu__item {
+  padding: 7px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu__item:hover {
+  background: var(--deck-4);
+}
+
+.menu__item--danger {
+  color: var(--danger);
+}
+
+.tool__col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+
+.tool__col:last-child {
+  border-right: none;
+}
+
+.tool__head {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  background: var(--deck);
+}
+
+.tool__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tool__foot {
+  flex: none;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  background: var(--deck);
+}
+
+.tool__empty {
+  padding: 26px 10px;
+  text-align: center;
+  color: var(--ink-3);
+  font-size: var(--fs-sm);
+}
+
+.tool__section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tool__row {
+  display: grid;
+  grid-template-columns: 68px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.tool__label {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  letter-spacing: 0.03em;
+}
+
+.tool__size {
+  display: flex;
+  gap: 8px;
+}
+
+.tool__size .prop__num {
+  flex: 1;
+}
+
+.tool__dir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.tool__dir-path {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+/* --- banners ------------------------------------------------------------- */
+.tool__banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  background: var(--danger-wash);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.tool__banner--quiet {
+  background: var(--deck);
+  color: var(--ink-3);
+}
+
+.tool__banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* --- the source ---------------------------------------------------------- */
+.source-card {
+  padding: 12px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+}
+
+.source-card__name {
+  font-size: var(--fs-md);
+  color: var(--ink);
+  word-break: break-all;
+  margin-bottom: 6px;
+}
+
+.source-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+}
+
+/* --- selects ------------------------------------------------------------- */
+.select {
+  height: 26px;
+  width: 100%;
+  padding: 0 6px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+  appearance: none;
+  transition: border-color var(--fast) var(--ease);
+}
+
+.select:hover {
+  border-color: var(--line-2);
+}
+
+.select:focus-visible {
+  border-color: var(--signal-edge);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.check input {
+  accent-color: var(--signal);
+  width: 13px;
+  height: 13px;
+}
+
+/* --- the task list ------------------------------------------------------- */
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task {
+  padding: 10px 12px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.task--running {
+  border-color: var(--splice-edge);
+}
+
+.task--done {
+  border-color: var(--signal-edge);
+}
+
+.task--error {
+  border-color: rgba(239, 95, 107, 0.45);
+}
+
+.task__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.task__name {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task__status {
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+.task--running .task__status {
+  color: var(--splice);
+}
+
+.task--done .task__status {
+  color: var(--signal-hi);
+}
+
+.task--error .task__status {
+  color: var(--danger);
+}
+
+.task__bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--deck-4);
+  overflow: hidden;
+}
+
+.task__bar-fill {
+  height: 100%;
+  background: var(--splice);
+  transition: width var(--mid) var(--ease);
+}
+
+.task--done .task__bar-fill {
+  background: var(--signal);
+}
+
+.task--error .task__bar-fill {
+  background: var(--danger);
+}
+
+.task__bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.task__detail {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task__actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+/* --- the download workspace ---------------------------------------------- */
+.download {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 980px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.download__top {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.download__url {
+  display: flex;
+  gap: 8px;
+}
+
+.download__url-input {
+  flex: 1;
+  height: 30px;
+}
+
+.download__out {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.download__info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+}
+
+.download__thumb {
+  flex: none;
+  width: 104px;
+  height: 60px;
+  border-radius: var(--r-control);
+  overflow: hidden;
+  background: var(--void);
+  border: 1px solid var(--line);
+}
+
+.download__thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.download__thumb-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.download__meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.download__title {
+  font-size: var(--fs-md);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download__sub {
+  margin-top: 4px;
+  display: flex;
+  gap: 14px;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+.download__name {
+  flex: none;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.download__formats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download__format-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.download__format {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  text-align: left;
+  transition:
+    background var(--fast) var(--ease),
+    border-color var(--fast) var(--ease);
+}
+
+.download__format:hover {
+  background: var(--deck-3);
+  border-color: var(--line-2);
+}
+
+.download__format.is-active {
+  background: var(--signal-wash);
+  border-color: var(--signal-edge);
+}
+
+.download__format-label {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.download__format.is-active .download__format-label {
+  color: var(--signal-hi);
+}
+
+.download__format-sub {
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+.download__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.download__queue {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.download__queue .tool__head {
+  border: none;
+  padding: 0;
+  background: none;
+  height: auto;
+}
+
+/* --- the mode switch in the title bar ------------------------------------ */
+.segmented--mode {
+  margin-right: 4px;
+}
+
+.segmented--mode .segmented__item {
+  flex: none;
+  padding: 0 12px;
+  min-width: 46px;
+}

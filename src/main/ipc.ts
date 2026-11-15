@@ -6,17 +6,35 @@ import { probeFile } from './media/probe'
 import { ffmpegPath, ffprobePath, ffmpegVersion } from './ffmpeg'
 import { toMediaUrl } from './protocol'
 import { AUDIO_FORMATS, ExportRunner } from './export/run'
+import { ConvertRunner } from './convert'
+import {
+  parseVideo,
+  rememberYtdlp,
+  ytdlpInfo
+} from './download'
+import { DownloadManager } from './downloads'
 import type {
   AppInfo,
+  ConvertOptions,
+  ConvertProgress,
+  ConvertState,
+  DownloadForm,
+  DownloadOptions,
+  DownloadState,
+  DownloadTask,
   ExportOptions,
   ExportProgress,
   ExportRequest,
   ExportState,
   ImportedAsset,
-  Project
+  Project,
+  VideoInfo,
+  YtdlpInfo
 } from '@shared/types'
 
 const runner = new ExportRunner()
+const converter = new ConvertRunner()
+const downloader = new DownloadManager()
 
 const MEDIA_EXTENSIONS = [
   'mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'mpg', 'mpeg',
@@ -32,6 +50,10 @@ function broadcast(channel: string, payload: unknown): void {
 
 runner.on('progress', (p: ExportProgress) => broadcast('export:progress', p))
 runner.on('state', (s: ExportState) => broadcast('export:state', s))
+converter.on('progress', (p: ConvertProgress) => broadcast('convert:progress', p))
+converter.on('state', (s: ConvertState) => broadcast('convert:state', s))
+downloader.on('state', (s: DownloadState) => broadcast('download:state', s))
+downloader.on('tasks', (t: DownloadTask[]) => broadcast('download:tasks', t))
 
 async function importPaths(paths: string[]): Promise<ImportedAsset[]> {
   const assets: ImportedAsset[] = []
@@ -101,6 +123,7 @@ export function registerIpc(): void {
     frameWidth?: number
     sourceWidth?: number
     sourceHeight?: number
+    still?: boolean
   }) => {
     return buildSprite({
       path: args.path,
@@ -109,7 +132,8 @@ export function registerIpc(): void {
       columns: args.columns,
       frameWidth: args.frameWidth,
       sourceWidth: args.sourceWidth,
-      sourceHeight: args.sourceHeight
+      sourceHeight: args.sourceHeight,
+      still: args.still
     })
   })
 
@@ -216,4 +240,108 @@ export function registerIpc(): void {
   })
 
   ipcMain.handle('app:userDataPath', () => app.getPath('userData'))
+
+  ipcMain.handle('app:downloadsPath', () => app.getPath('downloads'))
+
+  ipcMain.handle('media:probe', async (_e, path: string) => probeFile(path))
+
+  /* ---------------------------------------------------------------- */
+  /* Conversion                                                        */
+  /* ---------------------------------------------------------------- */
+
+  ipcMain.handle('convert:chooseInput', async (): Promise<string | null> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择要转换的文件',
+      properties: ['openFile'],
+      filters: [
+        { name: '所有媒体', extensions: MEDIA_EXTENSIONS },
+        { name: '视频', extensions: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'wmv', 'flv', 'mpg', 'mpeg', 'ts', '3gp'] },
+        { name: '音频', extensions: ['mp3', 'wav', 'aac', 'm4a', 'flac', 'ogg', 'opus'] }
+      ]
+    })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
+  ipcMain.handle('convert:chooseOutputDir', async (): Promise<string | null> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择输出目录',
+      properties: ['openDirectory', 'createDirectory']
+    })
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
+  ipcMain.handle('convert:start', async (_e, options: ConvertOptions) => {
+    if (converter.running) throw new Error('已有转换任务正在进行')
+    try {
+      await converter.run(options)
+    } catch (err) {
+      // The state event already carries the user-facing message.
+      console.error('[clipforge] conversion failed:', err)
+    }
+  })
+
+  ipcMain.handle('convert:cancel', async () => {
+    converter.cancel()
+  })
+
+  /* ---------------------------------------------------------------- */
+  /* Download                                                          */
+  /* ---------------------------------------------------------------- */
+
+  ipcMain.handle('download:locate', async (): Promise<YtdlpInfo> => ytdlpInfo())
+
+  ipcMain.handle('download:chooseBinary', async (): Promise<YtdlpInfo> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择 yt-dlp 可执行文件',
+      properties: ['openFile'],
+      filters:
+        process.platform === 'win32'
+          ? [{ name: '可执行文件', extensions: ['exe'] }]
+          : [{ name: '所有文件', extensions: ['*'] }]
+    })
+    const picked = result.canceled ? null : (result.filePaths[0] ?? null)
+    if (picked) rememberYtdlp(picked)
+    return ytdlpInfo()
+  })
+
+  ipcMain.handle('download:parse', async (_e, url: string): Promise<VideoInfo> => {
+    return parseVideo(url)
+  })
+
+  ipcMain.handle('download:start', async (_e, options: DownloadOptions) => {
+    return downloader.start(options)
+  })
+
+  ipcMain.handle('download:tasks', async (): Promise<DownloadTask[]> => downloader.list())
+
+  ipcMain.handle('download:cancel', async (_e, id: string) => {
+    downloader.cancel(id)
+  })
+
+  ipcMain.handle('download:remove', async (_e, id: string) => {
+    downloader.remove(id)
+  })
+
+  ipcMain.handle('download:clearFinished', async () => {
+    downloader.clearFinished()
+  })
+
+  ipcMain.handle('download:open', async (_e, id: string) => {
+    const error = await downloader.open(id)
+    if (error) throw new Error(error)
+  })
+
+  ipcMain.handle('download:reveal', async (_e, id: string) => {
+    const error = downloader.reveal(id)
+    if (error) throw new Error(error)
+  })
+
+  ipcMain.handle('download:getForm', async (): Promise<DownloadForm> => downloader.getForm())
+
+  ipcMain.handle('download:saveForm', async (_e, form: DownloadForm) => {
+    downloader.saveForm(form)
+  })
 }

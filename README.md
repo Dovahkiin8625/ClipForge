@@ -63,6 +63,25 @@
 - 音频波形以 PCM 流式降采样为峰值包络，不把整段音频读进内存
 - 时间轴缩放没有固定范围：从整条时间轴一眼看完，一直放大到单帧；上限跟着项目长度走，保证末尾仍然滚得到
 
+**格式转换**
+- 标题栏切换到「转换」工作区：左侧选源，中间调参数，右侧看任务
+- 十种输出容器：MP4 / MOV / MKV / WebM / AVI / GIF / MP3 / WAV / M4A / FLAC
+- 每个容器只列出它支持的编码器，换了格式编码器自动跟着换
+- 分辨率（原始 / 2160p / 1080p / 720p / 480p / 自定义）、帧率、质量档、音频码率可调
+- 源文件可以是磁盘上的文件，也可以直接挑媒体库里的素材
+- 转换是队列：可以连续排多个文件，每个任务各自显示进度，可单独取消
+- 产物写入指定目录，完成后一键导入媒体库
+
+**视频下载**
+- 标题栏切换到「下载」工作区：粘贴链接先解析，再决定要不要下
+- 解析结果给出标题、封面、时长与全部可用画质（含是否带声音）
+- 选好画质后下载，列表里显示进度、速度与剩余时间
+- 支持多个链接排队，前一个下完自动开始下一个
+- 下载列表与表单存在用户数据目录里：切换工作区不会打断下载，重开应用列表和链接都还在
+- 已完成的条目可以双击打开，右键菜单里有「打开文件」「打开文件所在目录」「导入媒体库」
+- 产物写入指定目录，可勾选「完成后导入媒体库」，也可单个手动导入
+- 依赖 [yt-dlp](https://github.com/yt-dlp/yt-dlp)：没有装时界面会提示去哪里下载，并可手动指定可执行文件路径
+
 ---
 
 ## 环境要求
@@ -71,10 +90,13 @@
 | --- | --- |
 | Node.js | ≥ 20（开发使用 v24） |
 | FFmpeg | 必须包含 `ffmpeg` 与 `ffprobe`，需在系统 PATH 中 |
+| yt-dlp | 可选，只有「视频下载」工作区需要 |
 
 查找顺序：`$CLIPFORGE_FFMPEG` 环境变量 → 安装目录内 `resources/bin` → 系统 PATH。
 
 如果找不到 FFmpeg，应用仍可编辑和预览，但无法生成缩略图、波形与导出文件，界面顶部会给出提示。
+
+yt-dlp 的查找顺序：`$CLIPFORGE_YTDLP` 环境变量 → 在「下载」工作区手动指定的可执行文件 → 安装目录内 `resources/bin` → 系统 PATH。环境变量可以带参数，例如 `CLIPFORGE_YTDLP="python -m yt_dlp"`。没有它时只有下载工作区不可用，其余功能照常。
 
 ---
 
@@ -117,6 +139,7 @@ npm run dist
 | 跳到开头 / 结尾 | `Home` / `End` |
 | 时间轴缩放 | `Ctrl+滚轮` 或 `+` / `-` |
 | 打开 / 保存 / 导出 | `Ctrl+O` / `Ctrl+S` / `Ctrl+E` |
+| 切换工作区 | `Ctrl+1` 剪辑 / `Ctrl+2` 转换 / `Ctrl+3` 下载 |
 
 时间轴上：拖动片段移动，拖动片段边缘裁剪，拖到同类的另一条轨道可换轨，拖动标尺擦洗，中键拖动平移。右键片段、轨道或时间轴空白处可打开菜单。
 
@@ -132,7 +155,10 @@ src/
 │   ├── protocol.ts          clipforge:// 协议（支持 Range 请求）
 │   ├── ffmpeg.ts            二进制查找
 │   ├── media/               探测、缩略图雪碧图、波形峰值
-│   └── export/              filter_complex 构建 + 导出执行
+│   ├── export/              filter_complex 构建 + 导出执行
+│   ├── convert.ts           单文件转码
+│   ├── download.ts          yt-dlp 定位、链接解析、下载执行
+│   └── downloads.ts         下载队列与列表持久化（用户数据目录）
 ├── preload/                 contextBridge 桥接
 ├── renderer/                React 渲染层
 │   ├── engine/              时间轴模型、关键帧、预览引擎、视频池
@@ -176,7 +202,11 @@ npx electron scripts/verify-adjustments.cjs # 调整面板、预览跟随、导�
 npx electron scripts/verify-timeline-layout.cjs # 片段不重叠、拖拽落位、缩放范围
 npx electron scripts/verify-export-kinds.cjs # 视频 / 音频 / GIF 三种导出
 node scripts/verify-adjust-parity.cjs # 预览与导出的画面是否一致
+npx electron scripts/verify-tools.cjs # 转换工作区、下载工作区
 ```
+
+`verify-tools.cjs` 会真实转码一个文件并校验产物；带 `CLIPFORGE_YTDLP` 运行时会连下载流程一起走完（`scripts/mock-ytdlp.cjs` 是一个不需要联网的替身）。
+
 
 冒烟测试会真实启动应用、导入素材、生成缩略图与波形、播放、拖动片段、撤销、导出，并用 FFmpeg 校验产物。
 

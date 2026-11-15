@@ -7,9 +7,12 @@ import { TimelinePanel } from './components/timeline/TimelinePanel'
 import { ExportDialog } from './components/ExportDialog'
 import { FfmpegWarning } from './components/FfmpegWarning'
 import { Toasts } from './components/Toasts'
+import { ConvertWorkspace } from './components/ConvertWorkspace'
+import { DownloadWorkspace } from './components/DownloadWorkspace'
 import { useEditor } from './state/store'
 import { transport } from './engine/transport'
 import { api } from './bridge'
+import type { Workspace } from '@shared/workspaces'
 
 const MIN_TIMELINE_H = 140
 
@@ -18,6 +21,7 @@ export function App(): React.JSX.Element {
   const [timelineH, setTimelineH] = useState(280)
   const [exportOpen, setExportOpen] = useState(false)
   const [resizing, setResizing] = useState(false)
+  const [mode, setMode] = useState<Workspace>('edit')
 
   /* ---------------------------------------------------------------- */
   /* Resizing the timeline pane                                        */
@@ -76,6 +80,30 @@ export function App(): React.JSX.Element {
 
       const store = useEditor.getState()
       const mod = e.ctrlKey || e.metaKey
+
+      // The workspace can be switched from anywhere.
+      if (mod && !typing) {
+        const digit = e.key
+        if (digit === '1') {
+          e.preventDefault()
+          setMode('edit')
+          return
+        }
+        if (digit === '2') {
+          e.preventDefault()
+          setMode('convert')
+          return
+        }
+        if (digit === '3') {
+          e.preventDefault()
+          setMode('download')
+          return
+        }
+      }
+
+      // The editing shortcuts belong to the editing workspace; in the tools
+      // they would fire against a timeline that is not even on screen.
+      if (mode !== 'edit') return
 
       if (mod && e.key.toLowerCase() === 'z') {
         e.preventDefault()
@@ -160,22 +188,41 @@ export function App(): React.JSX.Element {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [])
+  }, [mode])
 
   return (
     <div className={`app${resizing ? ' is-resizing' : ''}`}>
-      <TitleBar onExport={() => setExportOpen(true)} />
+      <TitleBar
+        mode={mode}
+        onModeChange={setMode}
+        onExport={() => setExportOpen(true)}
+      />
       <FfmpegWarning />
       <div className="app__body" ref={bodyRef}>
-        <div className="app__upper">
-          <MediaPanel />
-          <PreviewPanel />
-          <Inspector />
-        </div>
-        <div className="resizer" onPointerDown={startResize} />
-        <div className="app__lower" style={{ height: timelineH }}>
-          <TimelinePanel />
-        </div>
+        {mode === 'edit' ? (
+          <>
+            <div className="app__upper">
+              <MediaPanel />
+              <PreviewPanel />
+              <Inspector />
+            </div>
+            <div className="resizer" onPointerDown={startResize} />
+            <div className="app__lower" style={{ height: timelineH }}>
+              <TimelinePanel />
+            </div>
+          </>
+        ) : (
+          <div className="app__tool">
+            {/* The tool workspaces stay mounted; only the one in sight is
+                shown, so a running download is not interrupted by a switch. */}
+            <div className={`tool-pane${mode === 'convert' ? ' is-active' : ''}`}>
+              <ConvertWorkspace />
+            </div>
+            <div className={`tool-pane${mode === 'download' ? ' is-active' : ''}`}>
+              <DownloadWorkspace />
+            </div>
+          </div>
+        )}
       </div>
       <Toasts />
       {exportOpen ? <ExportDialog onClose={() => setExportOpen(false)} /> : null}

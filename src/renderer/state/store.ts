@@ -470,7 +470,16 @@ export const useEditor = create<EditorState>((set, get) => ({
     })
   },
 
-  insertClip: (assetId, trackId, start, end) =>
+  insertClip: (assetId, trackId, start, end) => {
+    const asset = get().project.assets[assetId]
+    if (!asset) return
+    // A picture needs a lane that is actually drawn: on an audio track it
+    // would sit there for ever without ever being seen. It goes to a video
+    // track instead.
+    if (asset.kind === 'image') {
+      const track = get().project.tracks.find((t) => t.id === trackId)
+      if (!track || track.kind !== 'video') trackId = get().ensureTrack('video')
+    }
     set((s) => ({
       project: produce(s.project, (draft) => {
         const asset = draft.assets[assetId]
@@ -508,7 +517,8 @@ export const useEditor = create<EditorState>((set, get) => ({
         draft.modifiedAt = Date.now()
       }),
       dirty: true
-    })),
+    }))
+  },
 
   moveClip: (clipId, targetTrackId, start) => {
     const state = get()
@@ -516,7 +526,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     const target = state.project.tracks.find((t) => t.id === targetTrackId)
     if (!source || !target) return
     // Video and audio never swap places.
-    if (source.id !== target.id && source.kind !== target.kind) return
+    if (source.id !== target.id && source.kind !== target.kind) {
+      const clip = source.clips.find((c) => c.id === clipId)
+      const isPicture = clip ? state.project.assets[clip.assetId]?.kind === 'image' : false
+      // A picture may move onto a video track: it can only be seen there.
+      if (!(isPicture && target.kind === 'video')) return
+    }
 
     const clip = source.clips.find((c) => c.id === clipId)
     if (!clip) return

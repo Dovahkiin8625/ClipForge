@@ -2,6 +2,7 @@ import type { Asset, Clip, Project, Track } from '@shared/types'
 import { rateAtOffset } from '@shared/speed'
 import { isNeutral } from '@shared/adjustments'
 import { VideoPool } from './videoPool'
+import { ImagePool } from './imagePool'
 import { AdjustFilter, cssFilterFor } from './adjustFilter'
 import { clipAt, sourceTimeAt } from './timeline'
 import { evaluateKeyframes } from './keyframes'
@@ -62,6 +63,7 @@ export class PreviewEngine {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
   private pool = new VideoPool()
+  private images = new ImagePool()
   private adjustFilter = new AdjustFilter()
   private project: Project
   private audioCtx: AudioContext | null = null
@@ -89,6 +91,10 @@ export class PreviewEngine {
     this.ctx = ctx
     // A newly loaded frame has to trigger a repaint even while paused.
     this.pool.onMediaReady = () => {
+      this.lastDrawn = -1
+    }
+    // A picture that has just been decoded has to trigger a repaint too.
+    this.images.onImageReady = () => {
       this.lastDrawn = -1
     }
     // The audio graph is created up front so that every media element is
@@ -320,6 +326,7 @@ export class PreviewEngine {
     if (this.rafId) cancelAnimationFrame(this.rafId)
     this.rafId = 0
     this.pool.dispose()
+    this.images.dispose()
     this.adjustFilter.dispose()
     if (this.audioCtx) {
       void this.audioCtx.close()
@@ -368,11 +375,20 @@ export class PreviewEngine {
   private syncMedia(t: number, force: boolean): void {
     const active = new Set<string>()
 
+    // An asset that was removed from the project takes its media with it.
+    const knownAssets = new Set(Object.keys(this.project.assets))
+    this.pool.retainAssets(knownAssets)
+    this.images.retainAssets(knownAssets)
+
     for (const track of this.project.tracks) {
       const clip = clipAt(track, t)
       if (!clip) continue
       const asset = this.project.assets[clip.assetId]
       if (!asset) continue
+
+      // A picture has no clock of its own and makes no sound: it is simply
+      // drawn for as long as the clip lasts.
+      if (asset.kind === 'image') continue
 
       active.add(clip.id)
       const el = this.pool.acquire(clip.id, asset)
@@ -435,9 +451,16 @@ export class PreviewEngine {
       if (!clip) continue
       const asset = this.project.assets[clip.assetId]
       if (!asset || asset.kind === 'audio') continue
+      // A picture is drawn from an <img>, a recording from a <video>.
+      if (asset.kind === 'image') {
+        const img = this.images.acquire(asset)
+        if (!this.images.isReady(img)) continue
+        this.drawClip(ctx, clip, asset, img, img.naturalWidth, img.naturalHeight, t)
+        continue
+      }
       const el = this.pool.acquire(clip.id, asset)
       if (el.readyState < 2 || el.videoWidth === 0) continue
-      this.drawClip(ctx, clip, asset, el, t)
+      this.drawClip(ctx, clip, asset, el, el.videoWidth, el.videoHeight, t)
     }
 
     ctx.restore()
@@ -497,7 +520,9 @@ export class PreviewEngine {
     ctx: CanvasRenderingContext2D,
     clip: Clip,
     asset: Asset,
-    el: HTMLVideoElement,
+    source: CanvasImageSource,
+    sourceWidth: number,
+    sourceHeight: number,
     t: number
   ): void {
     const { width: W, height: H } = this.project.settings
@@ -511,8 +536,8 @@ export class PreviewEngine {
 
     // Match the export exactly: fit the source into the frame, then apply
     // the clip's scale multiplier.
-    const srcW = asset.width || el.videoWidth
-    const srcH = asset.height || el.videoHeight
+    const srcW = asset.width || sourceWidth
+    const srcH = asset.height || sourceHeight
     const fit = Math.min(W / srcW, H / srcH)
     const dw = srcW * fit * scale
     const dh = srcH * fit * scale
@@ -528,7 +553,7 @@ export class PreviewEngine {
     const adjustments = clip.adjustments
     if (adjustments && !isNeutral(adjustments)) {
       const size = this.filterSize(srcW * fit, srcH * fit)
-      const filtered = this.adjustFilter.apply(el, adjustments, size.width, size.height)
+      const filtered = this.adjustFilter.apply(source, adjustments, size.width, size.height)
       if (filtered) {
         ctx.drawImage(filtered, -dw / 2, -dh / 2, dw, dh)
         ctx.restore()
@@ -537,13 +562,13 @@ export class PreviewEngine {
       // No GPU filter in this environment: the 2D canvas still knows a few
       // of the adjustments.
       ctx.filter = cssFilterFor(adjustments)
-      ctx.drawImage(el, -dw / 2, -dh / 2, dw, dh)
+      ctx.drawImage(source, -dw / 2, -dh / 2, dw, dh)
       ctx.filter = 'none'
       ctx.restore()
       return
     }
 
-    ctx.drawImage(el, -dw / 2, -dh / 2, dw, dh)
+    ctx.drawImage(source, -dw / 2, -dh / 2, dw, dh)
     ctx.restore()
   }
 
@@ -570,7 +595,8 @@ export class PreviewEngine {
   /** Nudges the pool by priming the assets that appear on the timeline. */
   primeAssets(): void {
     for (const asset of Object.values(this.project.assets)) {
-      this.pool.prime(asset)
+      if (asset.kind === 'image') this.images.prime(asset)
+      else this.pool.prime(asset)
     }
   }
 }

@@ -11,6 +11,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "verify:tools": "electron scripts/verify-tools.cjs",
     "dist": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {

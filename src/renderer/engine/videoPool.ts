@@ -96,10 +96,52 @@ export class VideoPool {
     }
   }
 
-  /** Releases every lease whose clip is no longer present. */
+  /**
+   * Releases every lease whose clip is no longer present.
+   *
+   * The element is paused on the way out: a clip that was deleted from the
+   * timeline must stop making noise, otherwise its video keeps playing in
+   * the background with nobody watching it.
+   */
   retainOnly(clipIds: Set<string>): void {
-    for (const clipId of [...this.leases.keys()]) {
-      if (!clipIds.has(clipId)) this.leases.delete(clipId)
+    for (const [clipId, lease] of [...this.leases.entries()]) {
+      if (clipIds.has(clipId)) continue
+      this.leases.delete(clipId)
+      this.stopElement(lease.el)
+    }
+  }
+
+  /** Stops an element and puts it back at the start of its source. */
+  private stopElement(el: HTMLVideoElement): void {
+    if (!el.paused) el.pause()
+    try {
+      el.currentTime = 0
+    } catch {
+      /* the element has no metadata yet */
+    }
+  }
+
+  /** Throws away every element of an asset that is no longer in the project. */
+  disposeAsset(assetId: string): void {
+    const list = this.elements.get(assetId)
+    if (list) {
+      for (const el of list) {
+        el.pause()
+        el.removeAttribute('src')
+        el.load()
+        el.remove()
+      }
+      this.elements.delete(assetId)
+    }
+    for (const [clipId, lease] of [...this.leases.entries()]) {
+      if (lease.assetId === assetId) this.leases.delete(clipId)
+    }
+  }
+
+  /** Disposes the elements of every asset that is no longer in the project. */
+  retainAssets(assetIds: Set<string>): void {
+    for (const assetId of [...this.elements.keys()]) {
+      if (!assetIds.has(assetId)) this.disposeAsset(assetId)
     }
   }
 
@@ -147,15 +189,25 @@ export class VideoPool {
 /**
  * The renderer cannot open `file://` URLs directly; media is served through
  * the `clipforge://` protocol registered in the main process.
+ *
+ * The path is base64url-encoded, because that is what the protocol handler
+ * decodes — percent-encoding would be handed back as a mangled path.
  */
-let schemeReady = false
-function toUrl(path: string): string {
-  if (/^[a-z]+:\/\//i.test(path)) {
-    if (!schemeReady) {
-      schemeReady = true
-    }
-    return path
-  }
-  const normalised = path.replace(/\\/g, '/')
-  return `clipforge://media/${encodeURI(normalised)}`
+export function toUrl(path: string): string {
+  if (/^[a-z]+:\/\//i.test(path)) return path
+  const encoded = encodeBase64Url(path)
+  return `clipforge://media/${encoded}`
+}
+
+/**
+ * Encodes a path the way the main process expects it.
+ *
+ * `btoa` only knows Latin-1, so the path is turned into UTF-8 bytes first —
+ * a Chinese file name would otherwise come back as mojibake.
+ */
+function encodeBase64Url(path: string): string {
+  const bytes = new TextEncoder().encode(path)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }

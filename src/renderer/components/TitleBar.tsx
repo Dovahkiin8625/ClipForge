@@ -3,13 +3,29 @@ import { useEditor } from '@/state/store'
 import { useProjectIO } from '@/state/projectIO'
 import { CanvasSettings } from '@/components/CanvasSettings'
 import { api } from '@/bridge'
+import type { Workspace } from '@shared/workspaces'
 
-export function TitleBar({ onExport }: { onExport: () => void }): React.JSX.Element {
+const MODES: { id: Workspace; label: string; title: string }[] = [
+  { id: 'edit', label: '剪辑', title: '剪辑工作区 (Ctrl+1)' },
+  { id: 'convert', label: '转换', title: '格式转换 (Ctrl+2)' },
+  { id: 'download', label: '下载', title: '视频下载 (Ctrl+3)' }
+]
+
+export function TitleBar({
+  mode,
+  onModeChange,
+  onExport
+}: {
+  mode: Workspace
+  onModeChange: (mode: Workspace) => void
+  onExport: () => void
+}): React.JSX.Element {
   const name = useEditor((s) => s.project.name)
   const dirty = useEditor((s) => s.dirty)
   const canUndo = useEditor((s) => s.history.past.length > 0)
   const canRedo = useEditor((s) => s.history.future.length > 0)
   const { open, save, saveAs } = useProjectIO()
+  const editing = mode === 'edit'
 
   // Ctrl+S / Ctrl+O / Ctrl+E are handled globally; these cover the rest.
   useEffect(() => {
@@ -55,7 +71,7 @@ export function TitleBar({ onExport }: { onExport: () => void }): React.JSX.Elem
       <div className="titlebar__actions">
         <button
           className="btn btn--ghost btn--icon"
-          disabled={!canUndo}
+          disabled={!canUndo || !editing}
           onClick={() => useEditor.getState().undo()}
           title="撤销 (Ctrl+Z)"
         >
@@ -63,7 +79,7 @@ export function TitleBar({ onExport }: { onExport: () => void }): React.JSX.Elem
         </button>
         <button
           className="btn btn--ghost btn--icon"
-          disabled={!canRedo}
+          disabled={!canRedo || !editing}
           onClick={() => useEditor.getState().redo()}
           title="重做 (Ctrl+Shift+Z)"
         >
@@ -79,15 +95,33 @@ export function TitleBar({ onExport }: { onExport: () => void }): React.JSX.Elem
       </div>
 
       <div className="titlebar__right">
-        <CanvasSettings />
-        <button
-          className="btn btn--primary"
-          onClick={onExport}
-          title="导出视频 (Ctrl+E)"
-          onMouseEnter={() => void api.app.info().catch(() => undefined)}
-        >
-          导出
-        </button>
+        <div className="segmented segmented--mode" role="tablist" aria-label="工作区">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              role="tab"
+              aria-selected={mode === m.id}
+              className={`segmented__item${mode === m.id ? ' is-active' : ''}`}
+              title={m.title}
+              onClick={() => onModeChange(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        {editing ? (
+          <>
+            <CanvasSettings />
+            <button
+              className="btn btn--primary"
+              onClick={onExport}
+              title="导出视频 (Ctrl+E)"
+              onMouseEnter={() => void api.app.info().catch(() => undefined)}
+            >
+              导出
+            </button>
+          </>
+        ) : null}
       </div>
     </header>
   )

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
-import type { Asset, Clip, Track, TrackKind } from '@shared/types'
+import type { Asset, AssetKind, Clip, Project, Track, TrackKind } from '@shared/types'
 import {
   averageSpeed,
   clipSourceEnd,
@@ -39,6 +39,16 @@ interface HitResult {
   edge?: 'start' | 'end'
 }
 
+/** Everything the canvas needs to paint a frame. */
+interface TimelineView {
+  pxPerSecond: number
+  project: Project
+  selected: Set<string>
+  images: Map<string, HTMLImageElement>
+  showWaveforms: boolean
+  playhead: number
+}
+
 /** What the right-click menu is currently opened on. */
 type MenuTarget =
   | { kind: 'clip'; x: number; y: number; clipId: string }
@@ -55,6 +65,9 @@ type DragMode =
       /** The kind of the track the clip came from — it may only be dropped
        *  on a track of the same kind. */
       kind: TrackKind
+      /** A still picture may also be dropped on a video track, because that
+       *  is the only place where it can be seen. */
+      assetKind: AssetKind
       /** Index of the track the clip came from. */
       originTrack: number
     }
@@ -142,17 +155,6 @@ export function TimelinePanel(): React.JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, mediaVersion])
 
-  /**
-   * The static layer carries the selection outline, the filmstrips and the
-   * waveforms, so it has to be repainted whenever any of *those* change — not
-   * only when the document itself does. Without the selection and the zoom
-   * in this list, clicking a clip would leave no visible mark until the next
-   * document edit, and zooming would leave the thumbnails at the old scale.
-   */
-  useEffect(() => {
-    staticDirtyRef.current = true
-  }, [workingProject, selected, pxPerSecond])
-
   /** The decoded sprite images referenced by the current assets. */
   const images = useMemo(() => {
     const map = new Map<string, HTMLImageElement>()
@@ -164,6 +166,41 @@ export function TimelinePanel(): React.JSX.Element {
     return map
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workingProject, mediaVersion])
+
+  /**
+   * Everything the canvas needs to paint, kept in a ref.
+   *
+   * The static layer carries the selection outline, the filmstrips and the
+   * waveforms, so it has to be repainted whenever any of *those* change — not
+   * only when the document itself does. Without the selection and the zoom in
+   * the list, clicking a clip would leave no visible mark until the next
+   * document edit, and zooming would leave the thumbnails at the old scale.
+   *
+   * The render loop reads the values from here instead of closing over them.
+   * That matters while the preview is playing: the playhead changes on every
+   * frame, and a loop that was torn down and rebuilt on every change would
+   * have its next frame cancelled before it ever ran — the timeline would
+   * then only wake up once the playback stopped.
+   */
+  const viewRef = useRef<TimelineView>({
+    pxPerSecond,
+    project: workingProject,
+    selected,
+    images,
+    showWaveforms,
+    playhead
+  })
+  viewRef.current = {
+    pxPerSecond,
+    project: workingProject,
+    selected,
+    images,
+    showWaveforms,
+    playhead
+  }
+
+  /** The view the static layer was painted with the last time. */
+  const drawnRef = useRef<TimelineView | null>(null)
 
   /* ---------------------------------------------------------------- */
   /* Canvas sizing                                                     */
@@ -206,9 +243,23 @@ export function TimelinePanel(): React.JSX.Element {
       const { w, h } = sizeRef.current
       if (w > 0 && h > 0) {
         const dpr = window.devicePixelRatio || 1
+        const view = viewRef.current
 
-        if (staticDirtyRef.current) {
+        // The static layer is repainted when the document, the selection, the
+        // zoom or the thumbnails changed, and whenever a scroll moved the
+        // ground under it.
+        const drawn = drawnRef.current
+        const stale =
+          drawn === null ||
+          drawn.pxPerSecond !== view.pxPerSecond ||
+          drawn.project !== view.project ||
+          drawn.selected !== view.selected ||
+          drawn.images !== view.images ||
+          drawn.showWaveforms !== view.showWaveforms
+
+        if (staticDirtyRef.current || stale) {
           staticDirtyRef.current = false
+          drawnRef.current = view
           const ctx = staticRef.current?.getContext('2d')
           if (ctx) {
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
@@ -218,11 +269,11 @@ export function TimelinePanel(): React.JSX.Element {
               height: h,
               scrollX: scrollRef.current.x,
               scrollY: scrollRef.current.y,
-              pxPerSecond,
-              project: workingProject,
-              selected,
-              images,
-              showWaveforms
+              pxPerSecond: view.pxPerSecond,
+              project: view.project,
+              selected: view.selected,
+              images: view.images,
+              showWaveforms: view.showWaveforms
             })
           }
         }
@@ -236,10 +287,10 @@ export function TimelinePanel(): React.JSX.Element {
             height: h,
             scrollX: scrollRef.current.x,
             scrollY: scrollRef.current.y,
-            pxPerSecond,
-            project: workingProject,
-            playhead,
-            selected,
+            pxPerSecond: view.pxPerSecond,
+            project: view.project,
+            playhead: view.playhead,
+            selected: view.selected,
             drag: dragPreviewRef.current,
             marquee: marqueeRef.current,
             snapGuide: snapGuideRef.current,
@@ -251,7 +302,10 @@ export function TimelinePanel(): React.JSX.Element {
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)
-  }, [pxPerSecond, workingProject, selected, playhead, showWaveforms, images])
+    // The loop reads its values from `viewRef` — it must survive every
+    // change of the document and of the playhead.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /* ---------------------------------------------------------------- */
   /* Scrolling                                                         */
@@ -372,8 +426,13 @@ export function TimelinePanel(): React.JSX.Element {
         // an incompatible lane leaves the clip on the lane it came from.
         const hovered = Math.floor((y - TL.rulerH + scrollRef.current.y) / TL.trackH)
         const hoveredTrack = state.project.tracks[hovered]
-        const trackIndex =
-          hoveredTrack && hoveredTrack.kind === mode.kind ? hovered : mode.originTrack
+        // A picture may also travel onto a video track — that is the only
+        // place where it can be seen.
+        const fits =
+          hoveredTrack &&
+          (hoveredTrack.kind === mode.kind ||
+            (mode.assetKind === 'image' && hoveredTrack.kind === 'video'))
+        const trackIndex = fits ? hovered : mode.originTrack
         // Two clips never share a stretch of a lane, so the clip lands in the
         // free place closest to where it was dropped. The preview shows the
         // place it will really take.
@@ -631,6 +690,7 @@ export function TimelinePanel(): React.JSX.Element {
             grabOffset: xToTime(x, pxPerSecond, scrollRef.current.x) - clip.start,
             duration: clip.duration,
             kind: track?.kind ?? 'video',
+            assetKind: asset?.kind ?? 'video',
             originTrack: hit.trackIndex ?? 0
           }
         }
