@@ -33,6 +33,13 @@ export interface SpriteSheet {
   interval: number
 }
 
+export interface Poster {
+  /** Absolute path to the generated picture on disk. */
+  path: string
+  /** `clipforge://` URL the renderer can load into an <img>. */
+  url: string
+}
+
 export interface Asset {
   id: ID
   name: string
@@ -388,19 +395,76 @@ export interface VideoFormatOption {
   sizeBytes?: number
   /** Whether the rendition carries sound. */
   hasAudio: boolean
+  /** The video codec, e.g. "avc1". Empty for an audio-only stream. */
+  vcodec: string
+  /** The audio codec, e.g. "mp4a". Empty for a silent stream. */
+  acodec: string
+  /** The bitrate in bits per second, when the site reports one. */
+  bitrate: number
 }
 
-export interface VideoInfo {
+/**
+ * A quality a person picks from.
+ *
+ * A site rarely offers a file that is ready to use: the picture and the
+ * sound often live in two separate streams, and both have to be fetched
+ * before they can be put back together. A choice therefore names the
+ * streams it takes — '137+140' is the picture of 137 with the sound of 140.
+ */
+export interface VideoChoice {
+  /** The value for yt-dlp's `-f`: '137+140', '137' or '140'. */
+  id: string
+  label: string
+  ext: string
+  width: number
+  height: number
+  fps: number
+  /** Estimated size of everything that will be fetched, in bytes. */
+  sizeBytes: number
+  hasAudio: boolean
+}
+
+/** One video inside a parsed link. */
+export interface VideoEntry {
+  /** The position in the list, starting at 1. */
+  index: number
+  /** A key that stays the same for this entry. */
+  id: string
+  title: string
+  duration: number
+  thumbnail?: string
+  /**
+   * The address of the stream itself, when the page holds it.
+   *
+   * A page that keeps its player in a JSON blob gives the address away
+   * only when the page is read by hand; the stream is then taken as it is.
+   */
+  mediaUrl?: string
+  /** The renditions on offer; empty until the entry has been read. */
+  formats: VideoFormatOption[]
+  /** The qualities on offer; empty until the entry has been read. */
+  choices: VideoChoice[]
+  /** Set when the entry could not be read. */
+  error?: string
+}
+
+/** What a link holds: the page and everything on it that can be downloaded. */
+export interface VideoList {
+  /** The link that was read. */
   url: string
   title: string
-  thumbnail?: string
-  duration: number
-  /** The site the video came from, e.g. "YouTube". */
+  /** The site the link came from, e.g. "YouTube". */
   extractor: string
-  formats: VideoFormatOption[]
+  /**
+   * 'single' when the link names one video, 'list' when it names a page
+   * with several of them (a multi-part video, a playlist, a channel).
+   */
+  mode: 'single' | 'list'
+  entries: VideoEntry[]
 }
 
 export interface DownloadOptions {
+  /** The link the download comes from. */
   url: string
   /** The rendition to take; omitted picks the best available. */
   formatId?: string
@@ -410,6 +474,20 @@ export interface DownloadOptions {
   fileName?: string
   /** The title of the video; only used to label the entry in the list. */
   title?: string
+  /** The extension the finished file will have, e.g. "mp4". */
+  outputExt?: string
+  /** Which entry of a list to take; unset when the link names one video. */
+  playlistItem?: number
+  /** The page a stream came from; some servers want it as the referer. */
+  referer?: string
+  /** The browser to read the login from. */
+  cookiesFromBrowser?: string
+  /** A file with the cookies of a site. */
+  cookiesFile?: string
+  /** Whether the subtitles are fetched along with the video. */
+  subtitles?: boolean
+  /** The languages of the subtitles. */
+  subLangs?: string
 }
 
 export interface DownloadProgress {
@@ -430,12 +508,45 @@ export type DownloadStatus =
   | 'error'
   | 'cancelled'
 
+/**
+ * Why a download failed, in terms a person can act on.
+ *
+ * The words yt-dlp prints are meant for a person who knows it; the reason
+ * says what to do about it.
+ */
+export interface DownloadFailure {
+  reason:
+    | 'unsupported'
+    | 'auth'
+    | 'outdated'
+    | 'format'
+    | 'network'
+    | 'dns'
+    | 'ffmpeg'
+    | 'disk'
+    | 'unknown'
+  /** What to do about it, in one line. */
+  hint: string
+}
+
 export interface DownloadState {
   status: DownloadStatus
   message: string
   progress: DownloadProgress
   /** Absolute path of the finished file. */
   outputPath?: string
+  /** Set when the download failed. */
+  failure?: DownloadFailure
+}
+
+/** What the finished file turned out to be. */
+export interface DownloadedMedia {
+  duration: number
+  width: number
+  height: number
+  codec: string
+  sizeBytes: number
+  hasAudio: boolean
 }
 
 /** One entry of the download list. The list lives in the main process so it
@@ -448,21 +559,53 @@ export interface DownloadTask {
   formatId: string
   fileName: string
   outputDir: string
+  /** The extension of the finished file. */
+  outputExt: string
+  /** Which entry of a list this task takes. */
+  playlistItem?: number
   status: DownloadStatus
   message: string
   progress: DownloadProgress
   /** Absolute path of the finished file. */
   outputPath?: string
+  /** Set when the download failed. */
+  failure?: DownloadFailure
+  /** What the finished file turned out to be. */
+  media?: DownloadedMedia
   createdAt: number
 }
 
-/** The state of the download form; it is kept so a link is never lost. */
-export interface DownloadForm {
-  url: string
-  formatId: string
-  fileName: string
+/**
+ * The settings of the download workspace.
+ *
+ * They live in the user data folder, so they survive a restart of the app.
+ * Nothing here belongs to a project: the downloader is a tool of its own.
+ */
+export interface DownloadSettings {
+  /** The yt-dlp binary the user picked by hand. */
+  ytdlpPath: string
+  /** Where the finished files are written. */
   outputDir: string
+  /** Whether a finished download is brought into the library. */
   autoImport: boolean
+  /** The link that was read last, so that it is never lost. */
+  url: string
+  /** The browser to read the login from; empty for none. */
+  cookiesFromBrowser: string
+  /** A file with the cookies of a site. */
+  cookiesFile: string
+  /** Whether the subtitles are fetched along with the video. */
+  subtitles: boolean
+  /** The languages of the subtitles, as yt-dlp writes them. */
+  subLangs: string
+  /** How many downloads may run at the same time. */
+  maxParallel: number
+  /** How many times a failed download is tried again. */
+  retries: number
+  /** When the newest version of yt-dlp was last looked for. */
+  lastUpdateCheck: number
+  /** The newest version of yt-dlp that was found. */
+  latestVersion: string
 }
 
 /** Where the yt-dlp binary was found, if at all. */
@@ -506,8 +649,13 @@ export interface Api {
       columns: number,
       frameWidth?: number,
       /** The file is a single still picture, not a recording. */
-      still?: boolean
+      still?: boolean,
+      /** Size of the source, used to work out the real frame height. */
+      sourceWidth?: number,
+      sourceHeight?: number
     ): Promise<SpriteSheet>
+    /** A single picture of a recording, for the card in the library. */
+    poster(path: string, time: number, frameWidth?: number): Promise<Poster | null>
     /** Extracts audio peaks for an asset. */
     waveform(path: string, duration: number): Promise<{ peaks: number[]; buckets: number }>
     /** Resolves the absolute path of a dropped `File`. */
@@ -550,14 +698,29 @@ export interface Api {
     locate(): Promise<YtdlpInfo>
     /** Lets the user point at a yt-dlp binary; the choice is remembered. */
     chooseBinary(): Promise<YtdlpInfo>
-    /** Reads the metadata of a link without downloading it. */
-    parse(url: string): Promise<VideoInfo>
+    /** Reads a link and lists everything on it that can be downloaded. */
+    parseList(url: string): Promise<VideoList>
+    /**
+     * Reads a page by hand and lists the streams it holds.
+     *
+     * The way out for a page the extractor does not understand.
+     */
+    scanPage(url: string): Promise<VideoList>
+    /**
+     * Reads the renditions of one entry of a list.
+     *
+     * The list itself only says what is on the page; the qualities of a
+     * single video are read when they are wanted.
+     */
+    loadEntry(url: string, playlistItem?: number): Promise<VideoEntry>
     /** Starts a download; the list is updated through the event callback. */
     start(options: DownloadOptions): Promise<DownloadTask>
     /** The whole download list, newest first. */
     tasks(): Promise<DownloadTask[]>
     /** Cancels a task; a queued task is only dropped. */
     cancel(id: string): Promise<void>
+    /** Puts a failed task back in the queue. */
+    retry(id: string): Promise<void>
     /** Removes a task from the list. */
     remove(id: string): Promise<void>
     /** Removes every finished task from the list. */
@@ -566,13 +729,23 @@ export interface Api {
     open(id: string): Promise<void>
     /** Shows the finished file in the file manager. */
     reveal(id: string): Promise<void>
-    /** The saved state of the download form. */
-    getForm(): Promise<DownloadForm>
-    /** Saves the state of the download form. */
-    saveForm(form: DownloadForm): Promise<void>
+    /** The settings of the download workspace. */
+    settings(): Promise<DownloadSettings>
+    /** Changes the settings and hands back the new ones. */
+    saveSettings(patch: Partial<DownloadSettings>): Promise<DownloadSettings>
+    /** Lets the user point at a file with the cookies of a site. */
+    chooseCookiesFile(): Promise<string>
+    /** Fetches the picture of a video and gives back a local link. */
+    cover(url: string): Promise<string>
+    /** Asks whether a newer yt-dlp is out. */
+    checkUpdate(force?: boolean): Promise<{ current: string; latest: string; hasUpdate: boolean }>
+    /** Puts a newer yt-dlp in place. */
+    updateYtdlp(): Promise<{ version: string; path: string }>
     onState(cb: (s: DownloadState) => void): () => void
     /** Fires whenever the download list changes. */
     onTasks(cb: (tasks: DownloadTask[]) => void): () => void
+    /** Fires whenever the settings change. */
+    onSettings(cb: (settings: DownloadSettings) => void): () => void
   }
   vocal: {
     /** The separation methods that are available right now. */

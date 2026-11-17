@@ -1,7 +1,7 @@
-import { useEditor } from '@/state/store'
+import { useToasts } from '@/state/toasts'
 
 export function Toasts(): React.JSX.Element {
-  const toasts = useEditor((s) => s.toasts)
+  const toasts = useToasts((s) => s.toasts)
 
   return (
     <div className="toast-layer" role="status" aria-live="polite">

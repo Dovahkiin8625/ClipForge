@@ -5,10 +5,10 @@ import { CanvasSettings } from '@/components/CanvasSettings'
 import { api } from '@/bridge'
 import type { Workspace } from '@shared/workspaces'
 
-const MODES: { id: Workspace; label: string; title: string }[] = [
-  { id: 'edit', label: '剪辑', title: '剪辑工作区 (Ctrl+1)' },
-  { id: 'convert', label: '转换', title: '格式转换 (Ctrl+2)' },
-  { id: 'download', label: '下载', title: '视频下载 (Ctrl+3)' }
+const MODES: { id: Workspace; label: string; title: string; heading: string }[] = [
+  { id: 'edit', label: '剪辑', title: '剪辑工作区 (Ctrl+1)', heading: '剪辑' },
+  { id: 'convert', label: '转换', title: '格式转换 (Ctrl+2)', heading: '格式转换' },
+  { id: 'download', label: '下载', title: '视频下载 (Ctrl+3)', heading: '视频下载' }
 ]
 
 export function TitleBar({
@@ -26,9 +26,13 @@ export function TitleBar({
   const canRedo = useEditor((s) => s.history.future.length > 0)
   const { open, save, saveAs } = useProjectIO()
   const editing = mode === 'edit'
+  const current = MODES.find((m) => m.id === mode) ?? MODES[0]
 
   // Ctrl+S / Ctrl+O / Ctrl+E are handled globally; these cover the rest.
+  // They act on the project, so they belong to the editing workspace: in the
+  // tools there is no project to open or to save.
   useEffect(() => {
+    if (!editing) return
     const onKeyDown = (e: KeyboardEvent): void => {
       const mod = e.ctrlKey || e.metaKey
       if (!mod) return
@@ -44,7 +48,7 @@ export function TitleBar({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, save, saveAs])
+  }, [editing, open, save, saveAs])
 
   return (
     <header className="titlebar">
@@ -54,44 +58,64 @@ export function TitleBar({
       </div>
 
       <div className="titlebar__project">
-        <input
-          className="titlebar__name"
-          value={name}
-          spellCheck={false}
-          onChange={(e) =>
-            useEditor.getState().mutate((draft) => {
-              draft.name = e.target.value
-            })
-          }
-          aria-label="项目名称"
-        />
-        {dirty ? <span className="titlebar__unsaved" title="有未保存的修改" /> : null}
+        {editing ? (
+          <>
+            <input
+              className="titlebar__name"
+              value={name}
+              spellCheck={false}
+              onChange={(e) =>
+                useEditor.getState().mutate((draft) => {
+                  draft.name = e.target.value
+                })
+              }
+              aria-label="项目名称"
+            />
+            {dirty ? <span className="titlebar__unsaved" title="有未保存的修改" /> : null}
+          </>
+        ) : (
+          // The tools are one-off tasks: they have no project of their own,
+          // so the name and the save button stay out of their way.
+          <span className="titlebar__heading">{current.heading}</span>
+        )}
       </div>
 
       <div className="titlebar__actions">
-        <button
-          className="btn btn--ghost btn--icon"
-          disabled={!canUndo || !editing}
-          onClick={() => useEditor.getState().undo()}
-          title="撤销 (Ctrl+Z)"
-        >
-          <UndoIcon />
-        </button>
-        <button
-          className="btn btn--ghost btn--icon"
-          disabled={!canRedo || !editing}
-          onClick={() => useEditor.getState().redo()}
-          title="重做 (Ctrl+Shift+Z)"
-        >
-          <RedoIcon />
-        </button>
-        <span className="titlebar__rule" />
-        <button className="btn btn--ghost btn--sm" onClick={() => void open()} title="打开项目 (Ctrl+O)">
-          打开
-        </button>
-        <button className="btn btn--ghost btn--sm" onClick={() => void save()} title="保存项目 (Ctrl+S)">
-          保存
-        </button>
+        {editing ? (
+          <>
+            <button
+              className="btn btn--ghost btn--icon"
+              disabled={!canUndo}
+              onClick={() => useEditor.getState().undo()}
+              title="撤销 (Ctrl+Z)"
+            >
+              <UndoIcon />
+            </button>
+            <button
+              className="btn btn--ghost btn--icon"
+              disabled={!canRedo}
+              onClick={() => useEditor.getState().redo()}
+              title="重做 (Ctrl+Shift+Z)"
+            >
+              <RedoIcon />
+            </button>
+            <span className="titlebar__rule" />
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => void open()}
+              title="打开项目 (Ctrl+O)"
+            >
+              打开
+            </button>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => void save()}
+              title="保存项目 (Ctrl+S)"
+            >
+              保存
+            </button>
+          </>
+        ) : null}
       </div>
 
       <div className="titlebar__right">

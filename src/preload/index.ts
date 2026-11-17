@@ -5,19 +5,21 @@ import type {
   ConvertProgress,
   ConvertState,
   DownloadOptions,
+  DownloadSettings,
   DownloadState,
   DownloadTask,
-  DownloadForm,
   ExportOptions,
   ExportProgress,
   ExportRequest,
   ExportState,
   ImportedAsset,
+  Poster,
   Project,
   ProbeResult,
   SpriteSheet,
   Unsubscribe,
-  VideoInfo,
+  VideoEntry,
+  VideoList,
   YtdlpInfo
 } from '@shared/types'
 import type {
@@ -43,9 +45,23 @@ const api = {
       endTime: number,
       columns: number,
       frameWidth?: number,
-      still?: boolean
+      still?: boolean,
+      sourceWidth?: number,
+      sourceHeight?: number
     ): Promise<SpriteSheet> =>
-      ipcRenderer.invoke('media:sprite', { path, startTime, endTime, columns, frameWidth, still }),
+      ipcRenderer.invoke('media:sprite', {
+        path,
+        startTime,
+        endTime,
+        columns,
+        frameWidth,
+        still,
+        sourceWidth,
+        sourceHeight
+      }),
+    /** A single picture of a recording, for the card in the library. */
+    poster: (path: string, time: number, frameWidth?: number): Promise<Poster | null> =>
+      ipcRenderer.invoke('media:poster', { path, time, frameWidth }),
     waveform: (path: string, duration: number): Promise<{ peaks: number[]; buckets: number }> =>
       ipcRenderer.invoke('media:waveform', { path, duration }),
     /** Resolves the absolute path of a dropped `File` (Electron ≥ 32 removed `File.path`). */
@@ -113,18 +129,31 @@ const api = {
   download: {
     locate: (): Promise<YtdlpInfo> => ipcRenderer.invoke('download:locate'),
     chooseBinary: (): Promise<YtdlpInfo> => ipcRenderer.invoke('download:chooseBinary'),
-    parse: (url: string): Promise<VideoInfo> => ipcRenderer.invoke('download:parse', url),
+    parseList: (url: string): Promise<VideoList> =>
+      ipcRenderer.invoke('download:parseList', url),
+    scanPage: (url: string): Promise<VideoList> =>
+      ipcRenderer.invoke('download:scanPage', url),
+    loadEntry: (url: string, playlistItem?: number): Promise<VideoEntry> =>
+      ipcRenderer.invoke('download:loadEntry', url, playlistItem),
     start: (options: DownloadOptions): Promise<DownloadTask> =>
       ipcRenderer.invoke('download:start', options),
     tasks: (): Promise<DownloadTask[]> => ipcRenderer.invoke('download:tasks'),
     cancel: (id: string): Promise<void> => ipcRenderer.invoke('download:cancel', id),
+    retry: (id: string): Promise<void> => ipcRenderer.invoke('download:retry', id),
     remove: (id: string): Promise<void> => ipcRenderer.invoke('download:remove', id),
     clearFinished: (): Promise<void> => ipcRenderer.invoke('download:clearFinished'),
     open: (id: string): Promise<void> => ipcRenderer.invoke('download:open', id),
     reveal: (id: string): Promise<void> => ipcRenderer.invoke('download:reveal', id),
-    getForm: (): Promise<DownloadForm> => ipcRenderer.invoke('download:getForm'),
-    saveForm: (form: DownloadForm): Promise<void> =>
-      ipcRenderer.invoke('download:saveForm', form),
+    settings: (): Promise<DownloadSettings> => ipcRenderer.invoke('download:settings'),
+    saveSettings: (patch: Partial<DownloadSettings>): Promise<DownloadSettings> =>
+      ipcRenderer.invoke('download:saveSettings', patch),
+    chooseCookiesFile: (): Promise<string> =>
+      ipcRenderer.invoke('download:chooseCookiesFile'),
+    cover: (url: string): Promise<string> => ipcRenderer.invoke('download:cover', url),
+    checkUpdate: (force?: boolean): Promise<{ current: string; latest: string; hasUpdate: boolean }> =>
+      ipcRenderer.invoke('download:checkUpdate', force),
+    updateYtdlp: (): Promise<{ version: string; path: string }> =>
+      ipcRenderer.invoke('download:updateYtdlp'),
     onState: (cb: (s: DownloadState) => void): Unsubscribe => {
       const handler = (_e: Electron.IpcRendererEvent, payload: DownloadState): void =>
         cb(payload)
@@ -136,6 +165,14 @@ const api = {
         cb(payload)
       ipcRenderer.on('download:tasks', handler)
       return () => ipcRenderer.removeListener('download:tasks', handler)
+    },
+    onSettings: (cb: (settings: DownloadSettings) => void): Unsubscribe => {
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        payload: DownloadSettings
+      ): void => cb(payload)
+      ipcRenderer.on('download:settings', handler)
+      return () => ipcRenderer.removeListener('download:settings', handler)
     }
   },
   vocal: {

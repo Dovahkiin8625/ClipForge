@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useEditor } from '@/state/store'
+import { toast } from '@/state/toasts'
 import { api } from '@/bridge'
 import { projectDuration } from '@/engine/timeline'
 import type { AudioFormat, ExportKind, ExportPreset, GifDither } from '@shared/types'
@@ -81,6 +82,19 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, running])
 
+  // Every opening of the dialog is a new export session. The state of the
+  // previous run lives in the store and would otherwise be inherited, so the
+  // dialog would greet the user with the finished screen of a run that is
+  // long over — and there would be no way to start another export.
+  useEffect(() => {
+    const store = useEditor.getState()
+    // A run that is still going belongs to an open session; leave it be.
+    if (store.exportState.status === 'running' || store.exportState.status === 'preparing') {
+      return
+    }
+    store.resetExportState()
+  }, [])
+
   const chooseOutput = async (): Promise<void> => {
     const path = await api.export.chooseOutput({
       defaultName: project.name || 'clipforge',
@@ -124,7 +138,7 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
         }
       })
     } catch (err) {
-      useEditor.getState().toast(String(err), 'error')
+      toast(String(err), 'error')
     }
   }
 
@@ -374,10 +388,10 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
           )}
           <button
             className="btn btn--primary"
-            disabled={!hasContent || blocked || running || done}
+            disabled={!hasContent || blocked || running}
             onClick={() => void start()}
           >
-            {done ? '已导出' : '开始导出'}
+            {done ? '再次导出' : '开始导出'}
           </button>
         </footer>
       </div>

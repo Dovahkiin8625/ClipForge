@@ -56,6 +56,14 @@
   transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
 }
 
+/* The name of a tool workspace: the tools have no project of their own. */
+.titlebar__heading {
+  font-size: var(--fs-base);
+  font-weight: 500;
+  color: var(--ink-2);
+  padding: 3px 7px;
+}
+
 .titlebar__name:hover {
   background: var(--deck);
 }

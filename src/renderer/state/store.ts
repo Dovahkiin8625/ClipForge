@@ -25,6 +25,7 @@ import {
 import { defaultAdjustments, normalizeAdjustments } from '@shared/adjustments'
 import type { VocalState } from '@shared/vocals'
 import { api } from '@/bridge'
+import { toast } from './toasts'
 import {
   createProject,
   canvasSizeFor,
@@ -37,12 +38,6 @@ import {
   pushClipsApart
 } from '@/engine/timeline'
 import { emptyKeyframes, evaluateKeyframes, setKeyframe } from '@/engine/keyframes'
-
-export interface Toast {
-  id: number
-  message: string
-  kind: 'info' | 'error'
-}
 
 const HISTORY_LIMIT = 120
 
@@ -61,7 +56,6 @@ interface EditorState {
   exportState: ExportState
   /** The progress of a running vocal separation. */
   vocalState: VocalState
-  toasts: Toast[]
   activeInspectorTab: 'transform' | 'composite' | 'adjust' | 'speed' | 'audio'
 
   // --- actions ---
@@ -176,10 +170,10 @@ interface EditorState {
   setDirty(v: boolean): void
 
   setExportState(state: ExportState): void
+  /** Puts the export back to the beginning, so a new run starts clean. */
+  resetExportState(): void
   /** Reports the progress of a vocal separation. */
   setVocalState(state: VocalState): void
-  toast(message: string, kind?: 'info' | 'error'): void
-  dismissToast(id: number): void
 }
 
 function emptyExportState(): ExportState {
@@ -199,8 +193,6 @@ function emptyExportState(): ExportState {
     log: []
   }
 }
-
-let toastSeq = 0
 
 /**
  * Adds an empty track of the given kind to a project draft.
@@ -287,7 +279,6 @@ export const useEditor = create<EditorState>((set, get) => ({
   history: { past: [], future: [] },
   exportState: emptyExportState(),
   vocalState: { status: 'idle', progress: 0, message: '' },
-  toasts: [],
   activeInspectorTab: 'transform',
 
   pushHistory: () =>
@@ -433,7 +424,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       state.select(state.selectedClipIds.filter((id) => !dead.has(id)))
     }
     const clipCount = track.clips.length
-    state.toast(
+    toast(
       clipCount > 0
         ? `已删除轨道「${track.name}」及其中的 ${clipCount} 个片段`
         : `已删除轨道「${track.name}」`
@@ -933,7 +924,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       },
       { silent: true }
     )
-    state.toast(
+    toast(
       moved
         ? '已分离音频到音频轨道，音频轨道上的其它片段已让位'
         : '已分离音频到音频轨道'
@@ -946,12 +937,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!clip) return
     const asset = state.project.assets[clip.assetId]
     if (!asset || !asset.hasAudio) {
-      state.toast('该片段没有声音，无法分离人声', 'error')
+      toast('该片段没有声音，无法分离人声', 'error')
       return
     }
     const track = state.project.tracks.find((t) => t.clips.some((c) => c.id === clipId))
     if (!track || track.kind !== 'video') {
-      state.toast('请在视频轨道的片段上使用人声分离', 'error')
+      toast('请在视频轨道的片段上使用人声分离', 'error')
       return
     }
 
@@ -961,7 +952,7 @@ export const useEditor = create<EditorState>((set, get) => ({
 
     let result
     try {
-      state.toast('正在分离人声…')
+      toast('正在分离人声…')
       result = await api.vocal.separate({
         sourcePath: asset.path,
         start: clip.inPoint,
@@ -971,7 +962,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       })
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      get().toast(message || '人声分离失败', 'error')
+      toast(message || '人声分离失败', 'error')
       return
     }
 
@@ -1042,7 +1033,7 @@ export const useEditor = create<EditorState>((set, get) => ({
       },
       { silent: true }
     )
-    get().toast(
+    toast(
       moved
         ? `已分离人声到音频轨道（${result.label}），音频轨道上的其它片段已让位`
         : `已分离人声到音频轨道（${result.label}）`
@@ -1125,17 +1116,8 @@ export const useEditor = create<EditorState>((set, get) => ({
   setDirty: (v) => set({ dirty: v }),
 
   setExportState: (state) => set({ exportState: state }),
-  setVocalState: (state) => set({ vocalState: state }),
-
-  toast: (message, kind = 'info') => {
-    const id = ++toastSeq
-    set((s) => ({ toasts: [...s.toasts, { id, message, kind }] }))
-    setTimeout(() => {
-      set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
-    }, kind === 'error' ? 6000 : 3200)
-  },
-
-  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }))
+  resetExportState: () => set({ exportState: emptyExportState() }),
+  setVocalState: (state) => set({ vocalState: state })
 }))
 
 /**

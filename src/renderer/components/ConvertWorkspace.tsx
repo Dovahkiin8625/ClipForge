@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ConvertFormat, ConvertOptions, ConvertState, ProbeResult } from '@shared/types'
 import { FORMATS, FORMAT_ORDER, isAudioOnly } from '@shared/convertFormats'
 import { useEditor } from '@/state/store'
+import { toast } from '@/state/toasts'
 import { api } from '@/bridge'
 import { formatDuration } from '@/engine/timelineDraw'
 
@@ -47,9 +48,6 @@ let taskSeq = 0
  * is converted with, and what came out of it.
  */
 export function ConvertWorkspace(): React.JSX.Element {
-  const assets = useEditor((s) => s.project.assets)
-  const toast = useEditor((s) => s.toast)
-
   const [input, setInput] = useState('')
   const [probe, setProbe] = useState<ProbeResult | null>(null)
   const [format, setFormat] = useState<ConvertFormat>('mp4')
@@ -100,15 +98,6 @@ export function ConvertWorkspace(): React.JSX.Element {
       setProbe(null)
     }
   }, [])
-
-  const useAsset = (path: string): void => {
-    setInput(path)
-    setFileName(stemOf(path))
-    void api.media
-      .probe(path)
-      .then(setProbe)
-      .catch(() => setProbe(null))
-  }
 
   /* ---------------------------------------------------------------- */
   /* The queue                                                         */
@@ -221,8 +210,6 @@ export function ConvertWorkspace(): React.JSX.Element {
     toast(`已导入 ${imported.length} 个文件`)
   }
 
-  const assetList = Object.values(assets)
-
   return (
     <div className="tool">
       <div className="tool__col tool__col--source">
@@ -260,26 +247,6 @@ export function ConvertWorkspace(): React.JSX.Element {
           <button className="btn btn--sm" onClick={() => void chooseSource()}>
             选择文件…
           </button>
-
-          {assetList.length > 0 ? (
-            <div className="tool__section">
-              <div className="label">从媒体库选择</div>
-              <select
-                className="select"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) useAsset(e.target.value)
-                }}
-              >
-                <option value="">选择素材…</option>
-                {assetList.map((a) => (
-                  <option key={a.id} value={a.path}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
         </div>
       </div>
 

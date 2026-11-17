@@ -1,17 +1,20 @@
 import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron'
 import { readFile, writeFile } from 'fs/promises'
-import { buildSprite } from './media/thumbs'
+import { buildPoster, buildSprite } from './media/thumbs'
 import { extractWaveform } from './media/waveform'
+import { withJob } from './media/jobs'
 import { probeFile } from './media/probe'
 import { ffmpegPath, ffprobePath, ffmpegVersion } from './ffmpeg'
 import { toMediaUrl } from './protocol'
 import { AUDIO_FORMATS, ExportRunner } from './export/run'
 import { ConvertRunner } from './convert'
 import {
-  parseVideo,
-  rememberYtdlp,
-  ytdlpInfo
+  loadEntry,
+  parseList,
+  scanPageAsList
 } from './download'
+import { installYtdlp, isNewer, latestYtdlp, rememberYtdlp, ytdlpInfo, ytdlpVersion } from './ytdlp'
+import { coverImage } from './cover'
 import { DownloadManager } from './downloads'
 import { VocalRunner } from './vocals/runner'
 import type {
@@ -19,8 +22,8 @@ import type {
   ConvertOptions,
   ConvertProgress,
   ConvertState,
-  DownloadForm,
   DownloadOptions,
+  DownloadSettings,
   DownloadState,
   DownloadTask,
   ExportOptions,
@@ -29,7 +32,8 @@ import type {
   ExportState,
   ImportedAsset,
   Project,
-  VideoInfo,
+  VideoEntry,
+  VideoList,
   YtdlpInfo
 } from '@shared/types'
 import type { VocalSeparateRequest, VocalState } from '@shared/vocals'
@@ -57,6 +61,7 @@ converter.on('progress', (p: ConvertProgress) => broadcast('convert:progress', p
 converter.on('state', (s: ConvertState) => broadcast('convert:state', s))
 downloader.on('state', (s: DownloadState) => broadcast('download:state', s))
 downloader.on('tasks', (t: DownloadTask[]) => broadcast('download:tasks', t))
+downloader.on('settings', (s: DownloadSettings) => broadcast('download:settings', s))
 vocalist.on('state', (s: VocalState) => broadcast('vocal:state', s))
 
 async function importPaths(paths: string[]): Promise<ImportedAsset[]> {
@@ -129,20 +134,30 @@ export function registerIpc(): void {
     sourceHeight?: number
     still?: boolean
   }) => {
-    return buildSprite({
-      path: args.path,
-      startTime: args.startTime,
-      endTime: args.endTime,
-      columns: args.columns,
-      frameWidth: args.frameWidth,
-      sourceWidth: args.sourceWidth,
-      sourceHeight: args.sourceHeight,
-      still: args.still
-    })
+    return withJob(() =>
+      buildSprite({
+        path: args.path,
+        startTime: args.startTime,
+        endTime: args.endTime,
+        columns: args.columns,
+        frameWidth: args.frameWidth,
+        sourceWidth: args.sourceWidth,
+        sourceHeight: args.sourceHeight,
+        still: args.still
+      })
+    )
+  })
+
+  ipcMain.handle('media:poster', async (_e, args: {
+    path: string
+    time: number
+    frameWidth?: number
+  }) => {
+    return withJob(() => buildPoster(args.path, args.time, args.frameWidth))
   })
 
   ipcMain.handle('media:waveform', async (_e, args: { path: string; duration: number }) => {
-    const result = await extractWaveform(args.path, args.duration)
+    const result = await withJob(() => extractWaveform(args.path, args.duration))
     // Float32Array cannot cross the IPC boundary as-is; send a plain array.
     return { peaks: Array.from(result.peaks), buckets: result.buckets }
   })
@@ -311,9 +326,20 @@ export function registerIpc(): void {
     return ytdlpInfo()
   })
 
-  ipcMain.handle('download:parse', async (_e, url: string): Promise<VideoInfo> => {
-    return parseVideo(url)
+  ipcMain.handle('download:parseList', async (_e, url: string): Promise<VideoList> => {
+    return parseList(url)
   })
+
+  ipcMain.handle('download:scanPage', async (_e, url: string): Promise<VideoList> => {
+    return scanPageAsList(url)
+  })
+
+  ipcMain.handle(
+    'download:loadEntry',
+    async (_e, url: string, playlistItem?: number): Promise<VideoEntry> => {
+      return loadEntry(url, playlistItem)
+    }
+  )
 
   ipcMain.handle('download:start', async (_e, options: DownloadOptions) => {
     return downloader.start(options)
@@ -343,11 +369,67 @@ export function registerIpc(): void {
     if (error) throw new Error(error)
   })
 
-  ipcMain.handle('download:getForm', async (): Promise<DownloadForm> => downloader.getForm())
-
-  ipcMain.handle('download:saveForm', async (_e, form: DownloadForm) => {
-    downloader.saveForm(form)
+  ipcMain.handle('download:settings', async (): Promise<DownloadSettings> => {
+    return downloader.settings()
   })
+
+  ipcMain.handle(
+    'download:saveSettings',
+    async (_e, patch: Partial<DownloadSettings>): Promise<DownloadSettings> => {
+      return downloader.saveSettings(patch)
+    }
+  )
+
+  ipcMain.handle('download:retry', async (_e, id: string) => {
+    downloader.retry(id)
+  })
+
+  ipcMain.handle('download:chooseCookiesFile', async (): Promise<string> => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择 cookies 文件',
+      properties: ['openFile'],
+      filters: [{ name: 'Cookies', extensions: ['txt', 'json', 'cookies'] }]
+    })
+    return result.canceled ? '' : (result.filePaths[0] ?? '')
+  })
+
+  ipcMain.handle('download:cover', async (_e, url: string): Promise<string> => {
+    return coverImage(url)
+  })
+
+  ipcMain.handle(
+    'download:checkUpdate',
+    async (_e, force?: boolean): Promise<{ current: string; latest: string; hasUpdate: boolean }> => {
+      const current = ytdlpVersion()
+      const settings = downloader.settings()
+      // The answer is kept for a few hours: GitHub is not to be asked every
+      // time the workspace is opened.
+      const fresh = Date.now() - settings.lastUpdateCheck < 6 * 3600_000
+      if (!force && fresh && settings.latestVersion) {
+        return {
+          current,
+          latest: settings.latestVersion,
+          hasUpdate: isNewer(settings.latestVersion, current)
+        }
+      }
+      const release = await latestYtdlp()
+      const latest = release?.version ?? ''
+      downloader.saveSettings({ lastUpdateCheck: Date.now(), latestVersion: latest })
+      return { current, latest, hasUpdate: !!latest && isNewer(latest, current) }
+    }
+  )
+
+  ipcMain.handle(
+    'download:updateYtdlp',
+    async (): Promise<{ version: string; path: string }> => {
+      const release = await latestYtdlp()
+      if (!release) throw new Error('没有找到新版本')
+      const path = await installYtdlp(release)
+      downloader.saveSettings({ lastUpdateCheck: Date.now(), latestVersion: release.version })
+      return { version: release.version, path }
+    }
+  )
 
   /* ---------------------------------------------------------------- */
   /* Vocal separation                                                 */

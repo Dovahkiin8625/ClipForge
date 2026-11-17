@@ -12,6 +12,8 @@
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "verify:tools": "electron scripts/verify-tools.cjs",
+    "verify:download": "electron scripts/verify-download.cjs",
+    "verify:page-scan": "esbuild src/main/pageScan.ts --bundle --format=cjs --platform=node --outfile=out/page-scan.cjs && node scripts/verify-page-scan.cjs",
     "dist": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {

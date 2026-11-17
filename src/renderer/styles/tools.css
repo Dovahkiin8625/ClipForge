@@ -362,34 +362,75 @@
   gap: 6px;
 }
 
+.task__media {
+  margin-top: 6px;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+.task__failure {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--danger-wash);
+  border: 1px solid rgba(239, 95, 107, 0.3);
+  border-radius: var(--r-control);
+}
+
+.task__failure-text {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.task__failure .task__actions {
+  flex-wrap: wrap;
+}
+
 /* --- the download workspace ---------------------------------------------- */
-.download {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 18px 22px 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-width: 980px;
-  margin: 0 auto;
-  width: 100%;
+/* The page is read on the left and the downloads run on the right: the two
+   are looked at together, and neither of them needs the whole width. */
+
+.tool--download {
+  grid-template-columns: minmax(0, 1fr) 380px;
+  grid-template-rows: 1fr;
+  overflow: hidden;
 }
 
-.download__top {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.tool__col--list {
+  min-width: 0;
 }
 
-.download__url {
+.download__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.download__bar {
   display: flex;
   gap: 8px;
 }
 
 .download__url-input {
   flex: 1;
-  height: 30px;
+  height: 34px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-base);
+}
+
+.download__url-input::placeholder,
+.dentry__name::placeholder,
+.download__langs::placeholder {
+  color: var(--ink-4);
+}
+
+.download__parse {
+  height: 34px;
+  padding: 0 22px;
 }
 
 .download__out {
@@ -398,45 +439,153 @@
   gap: 10px;
 }
 
-.download__info {
+.download__out .tool__dir-path {
+  max-width: 460px;
+}
+
+.download__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.download__section-head {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 12px;
+  gap: 10px;
+}
+
+.download__section-head .btn {
+  margin-left: auto;
+}
+
+.download__entries {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.download__empty {
+  margin-top: 28px;
+}
+
+/* --- the settings of the workspace --------------------------------------- */
+
+.download__settings {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px 16px;
   background: var(--deck-2);
   border: 1px solid var(--line);
   border-radius: var(--r-panel);
 }
 
-.download__thumb {
-  flex: none;
-  width: 104px;
-  height: 60px;
+.download__setting {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 12px;
+}
+
+.download__setting .tool__label {
+  white-space: nowrap;
+}
+
+.download__setting .select {
+  width: auto;
+  min-width: 130px;
+  /* A grid item fills its column unless it is told not to. */
+  justify-self: start;
+}
+
+.download__inline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.download__hint {
+  grid-column: 2;
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
+}
+
+.download__langs {
+  width: 180px;
+  height: 26px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+/* --- one video of the list ----------------------------------------------- */
+
+.dentry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--deck-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-panel);
+  transition:
+    border-color var(--fast) var(--ease),
+    background var(--fast) var(--ease);
+}
+
+.dentry:hover {
+  border-color: var(--line-2);
+}
+
+.dentry.is-open {
+  border-color: var(--signal-edge);
+}
+
+.dentry__row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.dentry__thumb {
+  width: 112px;
+  height: 63px;
   border-radius: var(--r-control);
   overflow: hidden;
   background: var(--void);
   border: 1px solid var(--line);
 }
 
-.download__thumb-img {
+.dentry__thumb-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-.download__thumb-empty {
+.dentry__thumb-empty {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.download__meta {
-  flex: 1;
+.dentry__main {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
-.download__title {
+.dentry__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.dentry__title {
+  min-width: 0;
   font-size: var(--fs-md);
   color: var(--ink);
   overflow: hidden;
@@ -444,91 +593,129 @@
   white-space: nowrap;
 }
 
-.download__sub {
-  margin-top: 4px;
-  display: flex;
-  gap: 14px;
+.dentry__dur {
+  flex: none;
   font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 
-.download__name {
-  flex: none;
-  width: 240px;
+.dentry__qualities {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 5px;
 }
 
-.download__formats {
+.dentry__side {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
 }
 
-.download__format-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
+.dentry__name {
+  width: 190px;
+  height: 26px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
 }
 
-.download__format {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-  padding: 8px 10px;
-  background: var(--deck-2);
+.dentry__error {
+  font-size: var(--fs-micro);
+  color: var(--danger);
+}
+
+/* --- the quality pills ---------------------------------------------------- */
+
+.qchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  background: var(--deck-3);
   border: 1px solid var(--line);
-  border-radius: var(--r-control);
-  text-align: left;
+  border-radius: 12px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
   transition:
     background var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
+    border-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
 }
 
-.download__format:hover {
-  background: var(--deck-3);
-  border-color: var(--line-2);
-}
-
-.download__format.is-active {
-  background: var(--signal-wash);
-  border-color: var(--signal-edge);
-}
-
-.download__format-label {
-  font-size: var(--fs-sm);
+.qchip:hover {
+  background: var(--deck-4);
+  border-color: var(--line-3);
   color: var(--ink);
 }
 
-.download__format.is-active .download__format-label {
+.qchip.is-active {
+  background: var(--signal-wash);
+  border-color: var(--signal-edge);
   color: var(--signal-hi);
 }
 
-.download__format-sub {
+.qchip.is-busy {
+  color: var(--ink-3);
+}
+
+.qchip--more {
+  background: none;
+  border-style: dashed;
+  color: var(--ink-3);
+}
+
+.qchip__label {
+  white-space: nowrap;
+}
+
+.qchip__size {
   font-size: var(--fs-micro);
   color: var(--ink-3);
 }
 
-.download__actions {
+.qchip.is-active .qchip__size {
+  color: var(--signal-hi);
+  opacity: 0.8;
+}
+
+/* --- the raw streams ------------------------------------------------------ */
+
+.dentry__raw {
   display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line);
+}
+
+.rchip {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  background: var(--deck-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-control);
+  font-size: var(--fs-micro);
+  color: var(--ink-3);
 }
 
-.download__queue {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.rchip:hover {
+  border-color: var(--line-3);
+  color: var(--ink-2);
 }
 
-.download__queue .tool__head {
-  border: none;
-  padding: 0;
-  background: none;
-  height: auto;
+.rchip.is-active {
+  background: var(--signal-wash);
+  border-color: var(--signal-edge);
+  color: var(--signal-hi);
+}
+
+.rchip__meta {
+  color: inherit;
+  opacity: 0.75;
 }
 
 /* --- the mode switch in the title bar ------------------------------------ */

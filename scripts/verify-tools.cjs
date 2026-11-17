@@ -5,7 +5,7 @@
  *
  *   npx electron scripts/verify-tools.cjs
  */
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, dialog } = require('electron')
 const fs = require('fs')
 const path = require('path')
 const os = require('os')
@@ -49,6 +49,10 @@ async function run() {
     if (level >= 2) errors.push(message)
   })
 
+  // The file picker is answered with the test clip: the conversion takes a
+  // file from disk, not something out of the project.
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [MEDIA[0]] })
+
   /* --- the conversion workspace ---------------------------------------- */
   console.log('\n▶ the conversion workspace')
   await win.webContents.executeJavaScript(
@@ -76,23 +80,18 @@ async function run() {
   check('the conversion workspace opens', modeShown)
   await shot(win, '10-convert-workspace')
 
-  // Pick the first asset from the media library drop-down.
+  // The source is a file on disk: the picker is answered with the test clip.
   await win.webContents.executeJavaScript(`
     (() => {
-      const select = Array.from(document.querySelectorAll('.select')).find(
-        (s) => Array.from(s.options).some((o) => o.value.endsWith('clip-a.mp4'))
-      )
-      if (!select) return false
-      const option = Array.from(select.options).find((o) => o.value.endsWith('clip-a.mp4'))
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLSelectElement.prototype, 'value'
-      ).set
-      setter.call(select, option.value)
-      select.dispatchEvent(new Event('change', { bubbles: true }))
+      const button = Array.from(
+        document.querySelectorAll('.tool__col--source button')
+      ).find((b) => b.textContent.trim() === '选择文件…')
+      if (!button) return false
+      button.click()
       return true
     })()
   `)
-  await delay(800)
+  await delay(1200)
 
   const sourceShown = await win.webContents.executeJavaScript(`
     Boolean(document.querySelector('.source-card__name'))
@@ -128,7 +127,7 @@ async function run() {
   for (let i = 0; i < 40; i++) {
     await delay(500)
     uiStatus = await win.webContents.executeJavaScript(
-      `document.querySelector('.task__status')?.textContent?.trim() ?? ''`
+      `document.querySelector('.tool__col--tasks .task__status')?.textContent?.trim() ?? ''`
     )
     if (uiStatus === '完成' || uiStatus === '失败') break
   }
@@ -256,6 +255,19 @@ async function run() {
   } else {
     console.log(`  (using ${binary.path} ${binary.version})`)
 
+    // The file is written into a folder of the test's own, not wherever a
+    // folder that was saved earlier may point to.
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'clipforge-tools-'))
+    dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [outDir] })
+    await win.webContents.executeJavaScript(`
+      (() => {
+        const buttons = Array.from(document.querySelectorAll('.download__out .btn'))
+        const pick = buttons.find((b) => b.textContent.trim() === '选择…')
+        if (pick) pick.click()
+      })()
+    `)
+    await delay(600)
+
     // Paste a link and read what it offers.
     await win.webContents.executeJavaScript(`
       (() => {
@@ -270,7 +282,7 @@ async function run() {
     await delay(300)
     await win.webContents.executeJavaScript(`
       (() => {
-        const buttons = Array.from(document.querySelectorAll('.download__url .btn'))
+        const buttons = Array.from(document.querySelectorAll('.download__bar .btn'))
         const parse = buttons.find((b) => b.textContent.trim() === '解析')
         if (parse) parse.click()
       })()
@@ -278,16 +290,16 @@ async function run() {
     await delay(1500)
 
     const formats = await win.webContents.executeJavaScript(
-      `document.querySelectorAll('.download__format').length`
+      `document.querySelectorAll('.qchip').length`
     )
-    check('the link offers its renditions', formats > 0, `${formats} formats`)
+    check('the link offers its renditions', formats > 0, `${formats} qualities`)
     await shot(win, '12-download-parsed')
 
     // Give the download a name of its own so the file can be cleaned up.
     const fileName = `clipforge-verify-${Date.now()}`
     await win.webContents.executeJavaScript(`
       (() => {
-        const input = document.querySelector('.download__name input')
+        const input = document.querySelector('.dentry__name')
         const setter = Object.getOwnPropertyDescriptor(
           window.HTMLInputElement.prototype, 'value'
         ).set
@@ -298,8 +310,8 @@ async function run() {
     await delay(300)
     await win.webContents.executeJavaScript(`
       (() => {
-        const buttons = Array.from(document.querySelectorAll('.download__actions .btn'))
-        const go = buttons.find((b) => b.textContent.trim() === '下载')
+        const buttons = Array.from(document.querySelectorAll('.dentry__side .btn'))
+        const go = buttons.find((b) => b.textContent.trim() === '加入队列')
         if (go) go.click()
       })()
     `)
@@ -311,16 +323,14 @@ async function run() {
     check('the download finishes', status === '完成', status)
     await shot(win, '13-download-done')
 
-    const downloads = await win.webContents.executeJavaScript(
-      `window.clipforge.app.downloadsPath()`
-    )
-    const produced = path.join(downloads, `${fileName}.mp4`)
+    const produced = path.join(outDir, `${fileName}.mp4`)
     if (fs.existsSync(produced)) {
       fs.unlinkSync(produced)
       check('the downloaded file is cleaned up', true)
     } else {
       check('the downloaded file was written', false, produced)
     }
+    fs.rmSync(outDir, { recursive: true, force: true })
   }
 
   /* --- back to the editor ---------------------------------------------- */

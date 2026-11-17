@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import type { Asset } from '@shared/types'
 import { useEditor } from '@/state/store'
+import { toast } from '@/state/toasts'
 import { mediaCache } from '@/state/mediaCache'
 import { api } from '@/bridge'
 import { formatDuration } from '@/engine/timelineDraw'
@@ -35,7 +36,7 @@ export function MediaPanel(): React.JSX.Element {
     const store = useEditor.getState()
     store.pushHistory()
     store.addAssets(imported)
-    store.toast(`已导入 ${imported.length} 个文件`)
+    toast(`已导入 ${imported.length} 个文件`)
   }, [])
 
   const insertAtPlayhead = useCallback((asset: Asset) => {
@@ -51,11 +52,11 @@ export function MediaPanel(): React.JSX.Element {
       const trackId = store.ensureTrack(kind)
       if (!trackId) return
       store.insertClip(asset.id, trackId, store.playhead)
-      store.toast(`已添加「${asset.name}」到${kind === 'audio' ? '音频' : '视频'}轨道`)
+      toast(`已添加「${asset.name}」到${kind === 'audio' ? '音频' : '视频'}轨道`)
       return
     }
     store.insertClip(asset.id, track.id, store.playhead)
-    store.toast(`已添加「${asset.name}」到「${track.name}」`)
+    toast(`已添加「${asset.name}」到「${track.name}」`)
   }, [])
 
   const removeAsset = useCallback((assetId: string) => {
@@ -150,6 +151,7 @@ export function MediaPanel(): React.JSX.Element {
 
 function AssetThumb({ asset }: { asset: Asset }): React.JSX.Element {
   const sprite = mediaCache.sprite(asset.id)
+  const poster = mediaCache.poster(asset.id)
 
   // A picture is shown straight from its file — it needs no decoding into a
   // sprite sheet, and this keeps the card sharp at any size.
@@ -169,10 +171,31 @@ function AssetThumb({ asset }: { asset: Asset }): React.JSX.Element {
     )
   }
 
-  if (asset.kind === 'audio' || !sprite) {
+  if (asset.kind === 'audio') {
     return (
       <div className="asset-card__thumb asset-card__thumb--empty">
-        {asset.kind === 'audio' ? <AudioGlyph /> : <FilmGlyph />}
+        <AudioGlyph />
+      </div>
+    )
+  }
+
+  // The sheet of frames is still being baked — until it is ready the card
+  // shows a single picture of the recording, so there is something to look
+  // at right away.
+  if (!sprite) {
+    if (!poster) {
+      return (
+        <div className="asset-card__thumb asset-card__thumb--empty">
+          <FilmGlyph />
+        </div>
+      )
+    }
+    return (
+      <div
+        className="asset-card__thumb asset-card__thumb--image"
+        style={assetAspect(asset)}
+      >
+        <img src={poster} alt={asset.name} loading="lazy" draggable={false} />
       </div>
     )
   }
@@ -190,6 +213,14 @@ function AssetThumb({ asset }: { asset: Asset }): React.JSX.Element {
       }}
     />
   )
+}
+
+/** The shape of the card follows the shape of the recording. */
+function assetAspect(asset: Asset): React.CSSProperties {
+  if (asset.width > 0 && asset.height > 0) {
+    return { aspectRatio: `${asset.width} / ${asset.height}` }
+  }
+  return {}
 }
 
 /** The academy leader mark — the classic countdown frame. */

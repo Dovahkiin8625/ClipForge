@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 import { useEditor } from './store'
+import { toast } from './toasts'
 import { api } from '@/bridge'
 import type { Project } from '@shared/types'
 import { normalizeAdjustments } from '@shared/adjustments'
@@ -26,7 +27,7 @@ export function useProjectIO(): {
     if (!path) return
     const project = await api.project.load(path)
     if (!project) {
-      useEditor.getState().toast('无法读取该项目文件', 'error')
+      toast('无法读取该项目文件', 'error')
       return
     }
     // Older files may be missing fields that the editor now expects.
@@ -85,7 +86,7 @@ export function useProjectIO(): {
     // two clips on the same spot; the one behind moves along.
     for (const track of migrated.tracks) clearOverlaps(track)
     useEditor.getState().setProject(migrated, path)
-    useEditor.getState().toast(`已打开 ${migrated.name}`)
+    toast(`已打开 ${migrated.name}`)
   }, [])
 
   const save = useCallback(async () => {
@@ -97,7 +98,7 @@ export function useProjectIO(): {
     }
     await api.project.save(serialise(store.project), path)
     useEditor.getState().setFilePath(path)
-    useEditor.getState().toast('项目已保存')
+    toast('项目已保存')
   }, [])
 
   const saveAs = useCallback(async () => {
@@ -106,7 +107,7 @@ export function useProjectIO(): {
     if (!path) return
     await api.project.save(serialise(store.project), path)
     useEditor.getState().setFilePath(path)
-    useEditor.getState().toast('项目已另存为')
+    toast('项目已另存为')
   }, [])
 
   return { open, save, saveAs }
